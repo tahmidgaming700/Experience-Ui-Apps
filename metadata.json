@@ -1,0 +1,6 @@
+{
+  "name": "GSI Updater",
+  "description": "System image updater verifying versioned JSON manifests, SHA-256 integrity, storage headroom, and architecture compatibility with detailed installation guidance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
