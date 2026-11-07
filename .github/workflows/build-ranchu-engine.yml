@@ -62,6 +62,7 @@ jobs:
           cp -a "$DIST/." "$RUNNER_TEMP/ranchu-runtime/"
           test -f "$RUNNER_TEMP/ranchu-runtime/emulator"
           test -f "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64"
+          test -f "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64-headless"
           file "$RUNNER_TEMP/ranchu-runtime/emulator"
           file "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64"
           readelf -h "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64" | grep -E "Machine:.*AArch64"
