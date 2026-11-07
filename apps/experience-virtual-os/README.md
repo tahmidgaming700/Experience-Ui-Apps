@@ -96,3 +96,33 @@ The current release therefore does not claim to boot Android. The host capabilit
 panel is intended to establish whether hardware acceleration is even available
 on the target phone before selecting and building the correct engine. TCG-only
 emulation may be too slow for a usable Android desktop on a mid-range phone.
+
+
+## Private Android SDK installation
+
+The dashboard now includes an in-app **Install Android SDK Manager + Android 17**
+action. The installer:
+
+- Extracts the bundled Alpine ARM64 root filesystem into app-private storage.
+- Starts Alpine through the bundled ARM64 PRoot executable and its Android
+  executable loader. No shell or terminal is presented to the user.
+- Installs the Alpine Java 17 runtime and certificate bundle.
+- Downloads Google's Linux command-line tools archive
+  `commandlinetools-linux-15859902_latest.zip` and verifies its SHA-256
+  (`4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583)).
+- Presents an explicit SDK licence confirmation before accepting package licences.
+- Invokes `sdkmanager` to request `platforms;android-37` and
+  `system-images;android-37;google_apis;arm64-v8a`.
+
+SDK package installation is a separate milestone from booting the downloaded
+image. A successful SDK Manager installation proves that the packages were
+resolved and installed; it does not prove that the Android Emulator's
+ranchu/goldfish machine model can boot on this Android host. The next runtime
+work is the compatible guest machine/graphics path and interactive input.
+
+The PRoot executable and loader are fetched in CI from the ARM64 release of
+[ahmed-alnassif/proot](https://github.com/ahmed-alnassif/proot), verified against
+its published SHA-256 manifest, and packaged as extracted native libraries.
+The project is GPL-3.0; the upstream Termux PRoot code is GPL-2.0-or-later.
+Review the bundled third-party notices and source obligations before publishing
+redistributable releases.
