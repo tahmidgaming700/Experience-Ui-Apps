@@ -1,55 +1,48 @@
 # Experience Virtual OS
 
-An independently implemented, rootless Android guest-environment manager inspired by the product concept and navigation of OneOS. This is not a direct port of OneOS's privileged hot-switch engine.
+An independently implemented, rootless Android guest-environment project inspired by the OneOS product concept. It is not a direct port of OneOS's privileged hot-switch engine.
 
 ## Target
 
 - Android 9 (API 28) and newer host devices.
-- ARM64-first, with Huawei Y9 2019 (JKM-LX2 / Kirin 710 / EMUI 9.1) as an explicit compatibility research target.
+- ARM64-first, with Huawei Y9 2019 (JKM-LX2 / Kirin 710 / EMUI 9.1) as a compatibility research target.
 - No host root, Magisk, KernelSU, bootloader unlock or host partition modifications.
-- Guest configuration includes an optional **guest-root request**. This is a setting for the guest image only; it never grants root to the host. Whether root is available depends on the guest image and runtime.
+- Optional guest-root preference is guest-only and image-dependent.
 
-## Current implementation
+## Current alpha implementation
 
-- First-run setup wizard: language, guest Android API, RAM profile and guest-root preference.
-- Dashboard and Android system-image library.
-- Download manager integration for the six Google ARM64 SDK image package URLs supplied for API 28–33.
-- Import of user-provided guest image packages using Android's Storage Access Framework.
-- Persistent setup and guest configuration.
-- Custom geometric launcher icon.
+- Native first-run setup for language, Android guest API, RAM profile and guest-root preference.
+- Rootless host dashboard and Android ARM64 image library.
+- Download manager integration for supplied Google ARM64 SDK image packages (API 28–33).
+- Import flow for user-provided guest image files.
+- **Alpine Linux ARM64 bootstrap:** CI downloads the official Alpine minirootfs from Alpine's latest-stable ARM64 release directory, verifies its SHA-256 against Alpine's published SHA256SUMS, and bundles it into the APK. The app extracts it into private app storage without root.
+- **GitHub update centre:** checks published releases in this repository, shows release notes, downloads a release APK, and opens Android's package installer after the user grants the app permission to request package installs.
+- Custom geometric launcher icon and dark, native Android interface.
 
-## Important runtime status
+## Runtime status — read carefully
 
-**The Android VM runtime is not integrated yet.** The current alpha can configure the app and download/import image packages, but it does not boot an Android guest. The Google SDK ZIP files are emulator system-image packages, not complete standalone VM applications. A working Android guest also needs a compatible QEMU build, kernel, ramdisk, vendor/system layout, machine configuration, graphics/display, input, storage and networking integration.
+The Alpine root filesystem can be installed into app-private storage. **This milestone does not yet execute an Alpine shell.** The next required component is a compatible ARM64 PRoot/native process runtime and terminal session. An Android app cannot simply chroot into Alpine without root, and the rootfs installer does not pretend otherwise.
 
-The supplied SDK packages are official Google download URLs. The app downloads them into its own external app-specific downloads directory. They are not bundled into the APK.
+**The Android guest VM is not integrated yet.** A working Android guest still requires a compatible QEMU ARM64 TCG build for Android, a validated Android guest machine/kernel/ramdisk/system/vendor layout, storage and lifecycle management, and display/input/network integration. The Google SDK ZIPs are system-image packages, not standalone emulator applications. No Android guest boot is claimed until that complete path is implemented and tested on target hardware.
 
-## OneOS images
+## App updates
 
-The upstream OneOS repository does not publish guest system images or firmware archives. Its README says guest images are built separately from OEM firmware and patched during its build process; the repository contains app code, scripts and patch tooling. Do not assume an image is available from that repository. If you have a separate OneOS Google Drive folder or a permitted image mirror, provide its share URL and we can add it as an optional image source after checking its contents and redistribution terms.
-
-## Why the original OneOS switcher is not used
-
-OneOS's original switcher replaces parts of the running Android framework using privileged operations. That is incompatible with the requirement to run on an unrooted, locked Huawei device. Experience Virtual OS keeps the host Android system intact and is being developed around a separate virtual-machine backend instead.
+Push a version tag such as v0.2.0-alpha01 to build the APK and publish it as a GitHub Release. The in-app updater reads published releases and selects the first APK asset. Android's package installer always asks the user to approve installation; the app does not silently update itself.
 
 ## Build
 
 JDK 17, Android SDK Platform 35 and Gradle 8.9:
 
-```sh
-gradle --no-daemon assembleDebug
-```
+    gradle --no-daemon assembleDebug
 
-Output: `app/build/outputs/apk/debug/app-debug.apk`.
+Output: app/build/outputs/apk/debug/app-debug.apk.
 
-## Roadmap
+The GitHub Actions workflow fetches and verifies the Alpine ARM64 root filesystem before building. The APK is uploaded as a workflow artifact. Tag pushes beginning with v also publish a GitHub Release containing the APK.
 
-1. Integrate a QEMU ARM64 runtime build suitable for Android 9 hosts.
-2. Validate the API 28–33 image package layouts and required emulator components.
-3. Implement per-guest disk storage, lifecycle management, display, input, audio and networking.
-4. Test performance and stability on the Huawei JKM-LX2 before advertising it as supported.
-5. Add guest-root support only for images where the guest-side mechanism is compatible and can be safely isolated from the host.
+## OneOS relationship
 
-## Licence and attribution
+The public OneOS repository contains app code and patch/build tooling, not a ready-to-download guest image archive. Its original switcher uses privileged operations that conflict with this project's unrooted-host requirement. This project is an independent implementation; it does not copy or invoke the privileged switcher.
 
-This is a separate implementation. OneOS is Apache-2.0; see https://github.com/fahadalijaved/OneOS for upstream notices and credits. Google SDK images remain Google's materials and are downloaded from Google rather than redistributed in this project.
+## Licences and image provenance
+
+Alpine minirootfs is obtained from the official Alpine Linux mirror at build time and checksum-verified against Alpine's published checksum file. Google SDK images remain Google's materials and are downloaded by the user from Google rather than redistributed by this project. OneOS is Apache-2.0; see https://github.com/fahadalijaved/OneOS for upstream notices and credits.
