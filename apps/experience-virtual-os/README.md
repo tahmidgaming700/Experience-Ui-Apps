@@ -27,7 +27,7 @@ The Alpine root filesystem can be installed into app-private storage. **This mil
 
 ## App updates
 
-Push a version tag such as v0.2.0-alpha01 to build the APK and publish it as a GitHub Release. The in-app updater reads published releases and selects the first APK asset. Android's package installer always asks the user to approve installation; the app does not silently update itself.
+Push a version tag such as v0.2.0-alpha01 to build the APK. To publish an installable release, configure the repository Actions secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD with the same persistent signing key used for every release. The workflow deliberately skips release publishing if these secrets are absent: debug APKs signed with temporary CI keys cannot update an installed copy. The in-app updater reads published releases and selects the first APK asset. Android's package installer always asks the user to approve installation; the app does not silently update itself.
 
 ## Build
 
@@ -37,7 +37,7 @@ JDK 17, Android SDK Platform 35 and Gradle 8.9:
 
 Output: app/build/outputs/apk/debug/app-debug.apk.
 
-The GitHub Actions workflow fetches and verifies the Alpine ARM64 root filesystem before building. The APK is uploaded as a workflow artifact. Tag pushes beginning with v also publish a GitHub Release containing the APK.
+The GitHub Actions workflow fetches and verifies the Alpine ARM64 root filesystem before building. The APK is uploaded as a workflow artifact. Tag pushes beginning with v publish a GitHub Release containing a consistently signed APK only when the four signing secrets are configured.
 
 ## OneOS relationship
 
