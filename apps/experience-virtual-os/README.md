@@ -133,37 +133,35 @@ redistributable releases.
 The app now has a guest execution path, rather than only preparing SDK packages:
 
 - QEMU is installed inside the private Alpine rootfs as a fallback engine.
-- A separate CI workflow cross-compiles Google's Android Emulator distribution
-  for Linux ARM64 using the documented `linux_aarch64` target. The complete
-  distribution (AVD launcher, Ranchu QEMU engine, libraries and support files)
-  is checksummed and made available to the APK build.
-- When the official engine is bundled, the app creates an AVD profile for the
-  selected SDK image and starts Google's `emulator` launcher with SwiftShader
-  software graphics, the selected RAM/CPU profile, and the Ranchu machine. The
-  Alpine QEMU package remains a generic ARM `virt` fallback.
-- The AVD launcher resolves the SDK kernel, ramdisk, system, vendor and writable
-  userdata images from the selected SDK package. It requests KVM acceleration
-  when the host exposes a readable and writable `/dev/kvm`; otherwise it
-  selects software emulation.
+- CI downloads the prebuilt ARM64 `kernel-qemu` binary from the
+  Google `platform/prebuilts/qemu-kernel` repository at the pinned
+  `brillo-m7-mr-dev` revision. It verifies the exact 6,157,664-byte size and
+  Git blob SHA-1 before packaging it into the APK.
+- The app copies this kernel into its private files directory and passes it to
+  the ARM64 `qemu-system-aarch64` runtime installed in the private Alpine
+  environment. No Android Emulator source build, `repo` tool, or Ranchu
+  artifact is required.
+- The guest boot path attaches the selected SDK ramdisk, system, optional
+  vendor and writable userdata images. It requests KVM only when the host
+  exposes a readable and writable `/dev/kvm`; otherwise it selects TCG
+  software emulation.
 - The emulator passes a QEMU VNC display on `127.0.0.1:5901`. The Android app contains
   an RFB 3.8 client that draws framebuffer updates and forwards touch pointer
   events and keyboard input to the guest. No VNC port is exposed to the LAN.
 - Dashboard actions provide engine installation, guest start/stop, display
   reopen and runtime log inspection.
 
-The Google Ranchu engine build is separate because ordinary upstream QEMU's
-generic ARM `virt` board is not equivalent to Android's Ranchu board. The
-generic fallback is useful for engine and display-path diagnostics, but it
-cannot be treated as proof that an official Android SDK image will boot.
-Actual Android boot, graphics and input compatibility still require the
-on-device run. The guest display is therefore not represented as a verified
-successful Android boot until the device test confirms it.
-
+The supplied kernel is an older Android/QEMU kernel, not a modern
+Android Emulator Ranchu kernel. It is bundled and selected by the app as
+requested, but compatibility with current Google SDK system images is not
+established. A successful APK build only verifies packaging and compilation;
+actual guest boot, display, graphics and input still require testing on the
+target device. If this kernel does not match the SDK image's userspace or
+virtual hardware, the next step is to select a matching guest image/kernel
+pair—not to claim that the VM has booted.
 
 ### Build outputs
 
-The **Build Android Ranchu QEMU for ARM64** workflow now produces two artifacts:
-`experience-ranchu-qemu-arm64` (the complete cross-compiled Android Emulator
-runtime) and `experience-virtual-os-ranchu-debug` (the APK with that runtime
-embedded). Use the latter when it is available; the ordinary app workflow's
-debug APK is a smaller fallback build that can install generic Alpine QEMU.
+The **Build Experience Virtual OS** workflow produces
+`experience-virtual-os-debug`, with the verified prebuilt Google ARM64
+`kernel-qemu` bundled in the APK.
