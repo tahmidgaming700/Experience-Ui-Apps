@@ -6,6 +6,10 @@ import android.graphics.*;
 import android.os.Bundle;
 import android.view.*;
 import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.BaseInputConnection;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.EditorInfo;
+import android.text.InputType;
 import android.widget.*;
 
 public final class GuestDisplayActivity extends Activity implements RfbClient.Listener {
@@ -30,6 +34,24 @@ public final class GuestDisplayActivity extends Activity implements RfbClient.Li
     private final class GuestSurface extends View{
         private final Paint p=new Paint(Paint.FILTER_BITMAP_FLAG);private Bitmap image;private float scale,ox,oy;private boolean down;
         GuestSurface(Context c){super(c);setFocusable(true);setFocusableInTouchMode(true);}
+        @Override public InputConnection onCreateInputConnection(EditorInfo attrs) {
+            attrs.inputType=InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+            attrs.imeOptions=EditorInfo.IME_ACTION_NONE|EditorInfo.IME_FLAG_NO_EXTRACT_UI;
+            return new BaseInputConnection(this,false) {
+                @Override public boolean commitText(CharSequence text,int cursor) {
+                    if(client!=null) for(int i=0;i<text.length();i++){int ch=text.charAt(i);client.key(ch,true);client.key(ch,false);}
+                    return true;
+                }
+                @Override public boolean deleteSurroundingText(int before,int after) {
+                    if(client!=null) for(int i=0;i<Math.max(1,before);i++){client.key(0xff08,true);client.key(0xff08,false);}
+                    return true;
+                }
+                @Override public boolean sendKeyEvent(KeyEvent event) {
+                    int sym=keySym(event);if(client!=null&&sym!=0)client.key(sym,event.getAction()==KeyEvent.ACTION_DOWN);
+                    return true;
+                }
+            };
+        }
         void setFrame(Bitmap b){image=b;invalidate();}
         @Override protected void onDraw(Canvas c){c.drawColor(0xff000000);if(image==null)return;scale=Math.min(getWidth()/(float)image.getWidth(),getHeight()/(float)image.getHeight());float w=image.getWidth()*scale,h=image.getHeight()*scale;ox=(getWidth()-w)/2;oy=(getHeight()-h)/2;c.drawBitmap(image,null,new RectF(ox,oy,ox+w,oy+h),p);}
         @Override public boolean onTouchEvent(MotionEvent e){if(client==null||image==null||scale<=0)return true;int x=(int)((e.getX()-ox)/scale),y=(int)((e.getY()-oy)/scale);x=Math.max(0,Math.min(image.getWidth()-1,x));y=Math.max(0,Math.min(image.getHeight()-1,y));
