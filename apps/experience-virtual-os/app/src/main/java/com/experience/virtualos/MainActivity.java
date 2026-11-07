@@ -1,6 +1,7 @@
 package com.experience.virtualos;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
@@ -306,6 +307,15 @@ public final class MainActivity extends Activity {
     }
 
     private void installSdkManager() {
+        new AlertDialog.Builder(this)
+                .setTitle("Android SDK licence")
+                .setMessage("Android 17 platform and system-image packages are distributed under Google's Android SDK licence. Review the terms before continuing. Experience Virtual OS will accept the SDK package licences only after you confirm here.")
+                .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())
+                .setPositiveButton("Accept and install", (dialog, which) -> beginSdkManagerInstall())
+                .show();
+    }
+
+    private void beginSdkManagerInstall() {
         base("ANDROID SDK INSTALLER", "Installing Android 17", "Experience Virtual OS is preparing its private Linux runtime and Android SDK. No terminal will be shown.");
         LinearLayout panel = card();
         panel.addView(label("INSTALLATION PROGRESS", 12, 0xFF9DBBFF, true));
