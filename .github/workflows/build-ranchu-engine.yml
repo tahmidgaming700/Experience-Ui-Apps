@@ -1,0 +1,77 @@
+name: Build Android Ranchu QEMU for ARM64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/experience-virtual-os-rootless
+    paths:
+      - ".github/workflows/build-ranchu-engine.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-ranchu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          df -h
+
+      - name: Install Android emulator build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl python3 python3-pip python-is-python3             build-essential crossbuild-essential-arm64 cmake ninja-build pkg-config             zip unzip rsync bc bison flex libncurses5-dev libssl-dev
+
+      - name: Install repo tool
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod a+x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch Android Emulator source
+        run: |
+          mkdir android-emulator
+          cd android-emulator
+          repo init -u https://android.googlesource.com/platform/manifest -b emu-master-dev --depth=1
+          repo sync -qcj 8 --no-tags
+
+      - name: Install Python build dependencies
+        run: python3 -m pip install --break-system-packages absl-py urlfetch
+
+      - name: Cross-compile Google Android Emulator for Linux ARM64
+        working-directory: android-emulator/external/qemu
+        run: |
+          python3 android/build/python/cmake.py             --noqtwebengine             --noshowprefixforinfo             --target linux_aarch64
+
+      - name: Package Ranchu QEMU runtime
+        run: |
+          set -euo pipefail
+          BIN="$(find android-emulator/external/qemu -type f -path '*/qemu/linux-aarch64/qemu-system-aarch64' -print -quit)"
+          if [ -z "$BIN" ]; then
+            BIN="$(find android-emulator -type f -name qemu-system-aarch64 -print -quit)"
+          fi
+          test -n "$BIN"
+          DIST="$(dirname "$(dirname "$(dirname "$BIN")")")"
+          test -d "$DIST/qemu"
+          mkdir -p "$RUNNER_TEMP/ranchu-runtime"
+          cp -a "$DIST/qemu" "$RUNNER_TEMP/ranchu-runtime/"
+          if [ -d "$DIST/lib64" ]; then cp -a "$DIST/lib64" "$RUNNER_TEMP/ranchu-runtime/"; fi
+          if [ -d "$DIST/lib" ]; then cp -a "$DIST/lib" "$RUNNER_TEMP/ranchu-runtime/"; fi
+          test -f "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64"
+          "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64" --version
+          tar -C "$RUNNER_TEMP/ranchu-runtime" -czf "$RUNNER_TEMP/experience-ranchu-qemu-arm64.tar.gz" .
+          sha256sum "$RUNNER_TEMP/experience-ranchu-qemu-arm64.tar.gz" > "$RUNNER_TEMP/experience-ranchu-qemu-arm64.tar.gz.sha256"
+
+      - name: Upload Android Ranchu QEMU runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-ranchu-qemu-arm64
+          path: |
+            ${{ runner.temp }}/experience-ranchu-qemu-arm64.tar.gz
+            ${{ runner.temp }}/experience-ranchu-qemu-arm64.tar.gz.sha256
+          retention-days: 30
