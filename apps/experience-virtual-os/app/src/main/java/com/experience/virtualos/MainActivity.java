@@ -256,7 +256,7 @@ public final class MainActivity extends Activity {
         LinearLayout sources = card();
         sources.addView(label("ANDROID SYSTEM LIBRARY", 12, 0xFF9DBBFF, true));
         sources.addView(label("Android guest releases • API 28–37", 18, 0xFFF5F7FC, true));
-        sources.addView(label("SDK Manager integration and ARM64 image compatibility checks are required before an Android guest can be launched.", 13, 0xFFB8C4D8, false));
+        sources.addView(label("The private SDK Manager can install selected Android platform and ARM64 guest-image packages. The virtual machine engine and interactive guest display are the next integration stages.", 13, 0xFFB8C4D8, false));
         cardButton(sources, "Install selected Android SDK + system image", this::installSdkManager);
         sources.addView(label("The private SDK Manager installs the Android 17 platform and requests the ARM64 Google APIs system image. Downloads and command output stay inside the app.", 12, 0xFFB8C4D8, false));
         button("Import another guest image", this::chooseImage);
