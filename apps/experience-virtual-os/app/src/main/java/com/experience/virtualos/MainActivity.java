@@ -332,7 +332,7 @@ public final class MainActivity extends Activity {
         new Thread(() -> {
             HttpURLConnection connection = null;
             try {
-                URL url = new URL("https://api.github.com/repos/tahmidgaming700/Experience-Ui-Apps/releases/latest");
+                URL url = new URL("https://api.github.com/repos/tahmidgaming700/Experience-Ui-Apps/releases?per_page=10");
                 connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(12000);
@@ -353,7 +353,15 @@ public final class MainActivity extends Activity {
                 String line;
                 while ((line = reader.readLine()) != null) json.append(line);
                 reader.close();
-                JSONObject release = new JSONObject(json.toString());
+                JSONArray releases = new JSONArray(json.toString());
+                if (releases.length() == 0) {
+                    mainHandler.post(() -> {
+                        if (updateState != null) updateState.setText("No published releases were found yet.");
+                        if (updateNotes != null) updateNotes.setText("Publish a GitHub Release with an APK asset to enable in-app updates.");
+                    });
+                    return;
+                }
+                JSONObject release = releases.getJSONObject(0);
                 String tag = release.optString("tag_name", "");
                 String name = release.optString("name", tag);
                 String body = release.optString("body", "");
