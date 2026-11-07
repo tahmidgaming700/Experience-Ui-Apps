@@ -277,9 +277,14 @@ public final class MainActivity extends Activity {
             renderWizard();
         });
         LinearLayout runtime = card();
+        runtime.addView(label("DEVICE COMPATIBILITY", 12, 0xFF9DBBFF, true));
+        RuntimeCapabilities capabilities = RuntimeCapabilities.inspect(this);
+        runtime.addView(label(capabilities.deviceSummary(), 15, 0xFFF5F7FC, true));
+        runtime.addView(label(capabilities.accelerationSummary(), 13, 0xFFB8C4D8, false));
+        runtime.addView(label("These are host checks only. A visible KVM node does not prove that a compatible guest machine can boot. Experience Virtual OS will not request root or change your bootloader.", 12, 0xFFFFD18A, false));
         runtime.addView(label("VIRTUAL MACHINE STATUS", 12, 0xFF9DBBFF, true));
-        runtime.addView(label("Android virtual device engine in development", 17, 0xFFFFD18A, true));
-        runtime.addView(label("The guest desktop will appear here when the ARM64 virtual-machine engine, Android guest image, display and touch integration have passed device testing.", 13, 0xFFB8C4D8, false));
+        runtime.addView(label("Android guest engine not installed", 17, 0xFFFFD18A, true));
+        runtime.addView(label("The Android guest display and touch session will be enabled only after the engine and matching guest image pass an on-device boot test.", 13, 0xFFB8C4D8, false));
         button("Restart setup wizard", () -> {
             prefs.edit().putBoolean("setup_complete", false).apply();
             showWizard();
