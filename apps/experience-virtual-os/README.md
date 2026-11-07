@@ -158,3 +158,12 @@ cannot be treated as proof that an official Android SDK image will boot.
 Actual Android boot, graphics and input compatibility still require the
 on-device run. The guest display is therefore not represented as a verified
 successful Android boot until the device test confirms it.
+
+
+### Build outputs
+
+The **Build Android Ranchu QEMU for ARM64** workflow now produces two artifacts:
+`experience-ranchu-qemu-arm64` (the complete cross-compiled Android Emulator
+runtime) and `experience-virtual-os-ranchu-debug` (the APK with that runtime
+embedded). Use the latter when it is available; the ordinary app workflow's
+debug APK is a smaller fallback build that can install generic Alpine QEMU.
