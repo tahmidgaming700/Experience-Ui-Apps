@@ -15,7 +15,7 @@ public final class GuestVmManager {
         try(InputStream in=c.getAssets().open("ranchu-engine.tar.gz")){
             File archive=new File(c.getFilesDir(),"ranchu-engine.tar.gz");
             try(OutputStream out=new FileOutputStream(archive)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)out.write(b);}
-            AlpineRuntime.run(c,"apk add --no-cache gcompat libstdc++ libgcc tar && mkdir -p /opt/ranchu && tar -xzf /workspace/ranchu-engine.tar.gz -C /opt/ranchu && chmod +x /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 && LD_LIBRARY_PATH=/opt/ranchu/lib64:/opt/ranchu/lib /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 --version");
+            AlpineRuntime.run(c,"apk update && apk add --no-cache gcompat libstdc++ libgcc tar && mkdir -p /opt/ranchu && tar -xzf /workspace/ranchu-engine.tar.gz -C /opt/ranchu && chmod +x /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 && LD_LIBRARY_PATH=/opt/ranchu/lib64:/opt/ranchu/lib /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 --version");
             bundledRanchu=true;
             return;
         }catch(FileNotFoundException noBundledEngine){
