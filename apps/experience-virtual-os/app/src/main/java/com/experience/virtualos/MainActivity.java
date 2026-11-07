@@ -276,7 +276,7 @@ public final class MainActivity extends Activity {
         runtime.addView(label("These are host checks only. A visible KVM node does not prove that a compatible guest machine can boot. Experience Virtual OS will not request root or change your bootloader.", 12, 0xFFFFD18A, false));
         runtime.addView(label("VIRTUAL MACHINE STATUS", 12, 0xFF9DBBFF, true));
         runtime.addView(label(GuestVmManager.isRunning() ? "Android guest process running" : "Android guest process stopped", 17, 0xFFFFD18A, true));
-        runtime.addView(label("The guest launcher now starts QEMU and connects its localhost VNC framebuffer to the in-app touch display. Actual Android boot compatibility is reported by the guest serial and QEMU logs.", 13, 0xFFB8C4D8, false));
+        runtime.addView(label("The guest launcher starts the Android Emulator engine when bundled and connects its localhost VNC framebuffer to the in-app touch display. Actual Android boot compatibility is reported by the guest serial and QEMU logs.", 13, 0xFFB8C4D8, false));
         button("Restart setup wizard", () -> {
             prefs.edit().putBoolean("setup_complete", false).apply();
             showWizard();
@@ -308,10 +308,10 @@ public final class MainActivity extends Activity {
     }
 
     private void installGuestEngine() {
-        showRuntimeProgress("Installing ARM64 virtual machine engine", "Preparing QEMU inside the private Alpine environment…", () -> {
+        showRuntimeProgress("Installing ARM64 virtual machine engine", "Preparing the Android Emulator engine inside the private environment…", () -> {
             try {
                 GuestVmManager.installEngine(this);
-                mainHandler.post(() -> { Toast.makeText(this, "QEMU engine installed.", Toast.LENGTH_LONG).show(); showHome(); });
+                mainHandler.post(() -> { Toast.makeText(this, "Virtual machine engine installed.", Toast.LENGTH_LONG).show(); showHome(); });
             } catch (Exception e) {
                 mainHandler.post(() -> showRuntimeError("Engine installation failed", e));
             }
