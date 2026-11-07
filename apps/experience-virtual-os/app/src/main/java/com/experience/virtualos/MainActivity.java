@@ -257,7 +257,7 @@ public final class MainActivity extends Activity {
         sources.addView(label("ANDROID SYSTEM LIBRARY", 12, 0xFF9DBBFF, true));
         sources.addView(label("Android guest releases • API 28–37", 18, 0xFFF5F7FC, true));
         sources.addView(label("SDK Manager integration and ARM64 image compatibility checks are required before an Android guest can be launched.", 13, 0xFFB8C4D8, false));
-        cardButton(sources, "Install Android SDK Manager + Android 17", this::installSdkManager);
+        cardButton(sources, "Install selected Android SDK + system image", this::installSdkManager);
         sources.addView(label("The private SDK Manager installs the Android 17 platform and requests the ARM64 Google APIs system image. Downloads and command output stay inside the app.", 12, 0xFFB8C4D8, false));
         button("Import another guest image", this::chooseImage);
         button("Change guest configuration", () -> {
@@ -316,7 +316,7 @@ public final class MainActivity extends Activity {
     }
 
     private void beginSdkManagerInstall() {
-        base("ANDROID SDK INSTALLER", "Installing Android 17", "Experience Virtual OS is preparing its private Linux runtime and Android SDK. No terminal will be shown.");
+        base("ANDROID SDK INSTALLER", "Installing Android SDK", "Experience Virtual OS is preparing the selected Android platform and ARM64 system image. No terminal will be shown.");
         LinearLayout panel = card();
         panel.addView(label("INSTALLATION PROGRESS", 12, 0xFF9DBBFF, true));
         TextView stage = label("Preparing private environment…", 17, 0xFFF5F7FC, true);
@@ -331,13 +331,13 @@ public final class MainActivity extends Activity {
         panel.addView(details);
         new Thread(() -> {
             try {
-                SdkManagerBootstrap.installAndroid17(this,
+                SdkManagerBootstrap.installSelectedGuest(this, 28 + prefs.getInt("api", 0),
                         message -> mainHandler.post(() -> stage.setText(message)));
                 mainHandler.post(() -> {
                     progress.setIndeterminate(false);
                     progress.setProgress(100);
                     stage.setText("Android SDK installation completed");
-                    details.setText("Android 17 platform and ARM64 Google APIs system-image packages were accepted by SDK Manager.");
+                    details.setText("The selected Android platform and ARM64 Google APIs system-image packages were accepted by SDK Manager.");
                     button("Return to Experience Virtual OS", this::showHome);
                 });
             } catch (Exception e) {
