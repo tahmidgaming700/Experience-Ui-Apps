@@ -5,6 +5,16 @@ import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.provider.Settings;
+import android.os.Handler;
+import android.os.Looper;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import android.database.Cursor;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -43,6 +53,12 @@ public final class MainActivity extends Activity {
     private int selectedApi = 0;
     private boolean guestRoot = false;
     private int selectedMemory = 1024;
+    private TextView updateState;
+    private TextView updateNotes;
+    private String latestReleaseTag = "";
+    private String latestApkUrl = "";
+    private long updateDownloadId = -1L;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -205,6 +221,33 @@ public final class MainActivity extends Activity {
         status.addView(label("ROOTLESS HOST", 12, 0xFF9DBBFF, true));
         status.addView(label("Huawei Android remains untouched", 18, 0xFFF5F7FC, true));
         status.addView(label("No host root, bootloader unlock or system partition access is requested.", 14, 0xFFB8C4D8, false));
+        LinearLayout alpine = card();
+        alpine.addView(label("ALPINE LINUX  /  ARM64", 12, 0xFF9DBBFF, true));
+        alpine.addView(label(AlpineEnvironment.isInstalled(this) ? "Alpine system installed" : "Alpine system ready to install", 19, 0xFFF5F7FC, true));
+        alpine.addView(label("A minimal Alpine ARM64 root filesystem is bundled into this build and installed into private app storage. It does not modify Android or require root.", 13, 0xFFB8C4D8, false));
+        alpine.addView(label(AlpineEnvironment.isInstalled(this)
+                ? "Root filesystem: " + AlpineEnvironment.root(this).getAbsolutePath()
+                : "Package: official Alpine minirootfs • architecture: aarch64", 12, 0xFF91A2BA, false));
+        if (!AlpineEnvironment.isInstalled(this)) {
+            cardButton(alpine, "Install Alpine environment", this::installAlpine);
+        } else {
+            alpine.addView(label("Next runtime milestone: integrate PRoot and a terminal session. Alpine files are installed; this build does not yet claim to execute an Alpine shell.", 12, 0xFFFFD18A, false));
+        }
+
+        LinearLayout updates = card();
+        updates.addView(label("SOFTWARE UPDATES", 12, 0xFF9DBBFF, true));
+        updates.addView(label("Experience Virtual OS", 19, 0xFFF5F7FC, true));
+        String installedVersion = getVersionName();
+        updates.addView(label("Installed version  •  " + installedVersion, 13, 0xFFB8C4D8, false));
+        updateState = label("Check GitHub for the latest published release.", 14, 0xFFE8EEF8, false);
+        updateNotes = label("", 12, 0xFFB8C4D8, false);
+        updates.addView(updateState);
+        updates.addView(updateNotes);
+        cardButton(updates, "Check for updates", this::checkForUpdates);
+        cardButton(updates, "Download available update", this::downloadUpdate);
+        cardButton(updates, "Install downloaded update", this::installDownloadedUpdate);
+        cardButton(updates, "View GitHub releases", this::openReleases);
+
         LinearLayout config = card();
         config.addView(label("CURRENT GUEST PROFILE", 12, 0xFF9DBBFF, true));
         config.addView(label(API_LEVELS[prefs.getInt("api", 0)] + " • " + prefs.getInt("memory", 1024) + " MB", 17, 0xFFF5F7FC, true));
@@ -242,6 +285,204 @@ public final class MainActivity extends Activity {
             showWizard();
         });
         page.addView(label("Experience Virtual OS • alpha", 12, 0xFF7F8CA2, false));
+    }
+
+
+    private Button cardButton(LinearLayout parent, String text, Runnable action) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setAllCaps(false);
+        b.setTextSize(14);
+        b.setTextColor(0xFFE8EEF8);
+        b.setBackground(shape(0xFF26374D, 15));
+        b.setOnClickListener(v -> action.run());
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(46));
+        p.topMargin = dp(8);
+        parent.addView(b, p);
+        return b;
+    }
+
+    private String getVersionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
+    private void installAlpine() {
+        Toast.makeText(this, "Installing Alpine ARM64 root filesystem…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                AlpineEnvironment.installFromAssets(this);
+                mainHandler.post(() -> {
+                    Toast.makeText(this, "Alpine root filesystem installed.", Toast.LENGTH_LONG).show();
+                    showHome();
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> Toast.makeText(this,
+                        "Alpine installation failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        }, "alpine-rootfs-installer").start();
+    }
+
+    private void checkForUpdates() {
+        if (updateState != null) updateState.setText("Checking GitHub Releases…");
+        if (updateNotes != null) updateNotes.setText("");
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL("https://api.github.com/repos/tahmidgaming700/Experience-Ui-Apps/releases/latest");
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(12000);
+                connection.setReadTimeout(12000);
+                connection.setRequestProperty("Accept", "application/vnd.github+json");
+                connection.setRequestProperty("User-Agent", "Experience-Virtual-OS-Android");
+                int code = connection.getResponseCode();
+                if (code == 404) {
+                    mainHandler.post(() -> {
+                        if (updateState != null) updateState.setText("No published stable release was found yet.");
+                        if (updateNotes != null) updateNotes.setText("Publish a GitHub Release with an APK asset to enable in-app updates.");
+                    });
+                    return;
+                }
+                if (code < 200 || code >= 300) throw new java.io.IOException("GitHub returned HTTP " + code);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
+                StringBuilder json = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) json.append(line);
+                reader.close();
+                JSONObject release = new JSONObject(json.toString());
+                String tag = release.optString("tag_name", "");
+                String name = release.optString("name", tag);
+                String body = release.optString("body", "");
+                JSONArray assets = release.optJSONArray("assets");
+                String apk = "";
+                if (assets != null) {
+                    for (int i = 0; i < assets.length(); i++) {
+                        JSONObject asset = assets.getJSONObject(i);
+                        String assetName = asset.optString("name", "");
+                        if (assetName.toLowerCase().endsWith(".apk")) {
+                            apk = asset.optString("browser_download_url", "");
+                            if (!apk.isEmpty()) break;
+                        }
+                    }
+                }
+                final String foundApk = apk;
+                final String foundTag = tag;
+                final String foundName = name;
+                final String notes = body.length() > 700 ? body.substring(0, 700) + "…" : body;
+                latestReleaseTag = tag;
+                latestApkUrl = apk;
+                boolean newer = isVersionNewer(tag, getVersionName());
+                mainHandler.post(() -> {
+                    if (updateState != null) {
+                        if (newer && !foundApk.isEmpty()) updateState.setText("Update available: " + foundName + " (" + foundTag + ")");
+                        else if (newer) updateState.setText("Release " + foundTag + " exists, but it has no APK asset yet.");
+                        else updateState.setText("You're up to date. Latest release: " + foundTag);
+                    }
+                    if (updateNotes != null) updateNotes.setText(notes.isEmpty() ? "No release notes supplied." : notes);
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> {
+                    if (updateState != null) updateState.setText("Could not check updates: " + e.getMessage());
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }, "experience-update-check").start();
+    }
+
+    private boolean isVersionNewer(String remote, String local) {
+        String[] a = remote.replaceFirst("^[vV]", "").split("[-+]", 2);
+        String[] b = local.replaceFirst("^[vV]", "").split("[-+]", 2);
+        String[] av = a[0].split("\\.");
+        String[] bv = b[0].split("\\.");
+        for (int i = 0; i < Math.max(av.length, bv.length); i++) {
+            int x = i < av.length ? leadingNumber(av[i]) : 0;
+            int y = i < bv.length ? leadingNumber(bv[i]) : 0;
+            if (x != y) return x > y;
+        }
+        boolean remotePre = a.length > 1;
+        boolean localPre = b.length > 1;
+        if (remotePre != localPre) return !remotePre;
+        return remotePre && a[1].compareToIgnoreCase(b[1]) > 0;
+    }
+
+    private int leadingNumber(String value) {
+        String digits = value.replaceFirst("^([0-9]+).*$", "$1");
+        try { return Integer.parseInt(digits); } catch (Exception e) { return 0; }
+    }
+
+    private void downloadUpdate() {
+        if (latestApkUrl == null || latestApkUrl.isEmpty()) {
+            Toast.makeText(this, "Check for updates first. A release APK must be published.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(latestApkUrl));
+            request.setTitle("Experience Virtual OS " + latestReleaseTag);
+            request.setDescription("Downloading update from GitHub Releases");
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setAllowedOverMetered(true);
+            request.setAllowedOverRoaming(false);
+            request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS,
+                    "experience-virtual-os-" + latestReleaseTag + ".apk");
+            DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+            updateDownloadId = manager.enqueue(request);
+            prefs.edit().putLong("update_download_id", updateDownloadId).apply();
+            Toast.makeText(this, "Update download started.", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not download update: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void installDownloadedUpdate() {
+        long id = prefs.getLong("update_download_id", -1L);
+        if (id < 0) {
+            Toast.makeText(this, "No downloaded update is available.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+        DownloadManager.Query query = new DownloadManager.Query().setFilterById(id);
+        try (Cursor cursor = manager.query(query)) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                Toast.makeText(this, "Update download was not found.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+            if (status != DownloadManager.STATUS_SUCCESSFUL) {
+                Toast.makeText(this, "The update has not finished downloading.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + getPackageName()));
+            startActivity(settings);
+            Toast.makeText(this, "Allow installs from Experience Virtual OS, then tap Install downloaded update again.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Uri apk = manager.getUriForDownloadedFile(id);
+        if (apk == null) {
+            Toast.makeText(this, "Could not open the downloaded APK.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Intent install = new Intent(Intent.ACTION_VIEW);
+        install.setDataAndType(apk, "application/vnd.android.package-archive");
+        install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        try { startActivity(install); }
+        catch (Exception e) { Toast.makeText(this, "Installer could not open the APK: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
+    }
+
+    private void openReleases() {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/tahmidgaming700/Experience-Ui-Apps/releases")));
+        } catch (Exception e) {
+            Toast.makeText(this, "No browser is available.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void downloadImage(int index) {
