@@ -6,11 +6,23 @@ import java.io.*;
 /** Owns the private QEMU process and its Android guest disk set. */
 public final class GuestVmManager {
     private static Process process; private static File log;
+    private static boolean bundledRanchu;
     private GuestVmManager(){}
     public static synchronized boolean isRunning(){return process!=null&&process.isAlive();}
     public static synchronized File logFile(){return log;}
     public static synchronized void installEngine(Context c)throws Exception{
         if(!AlpineEnvironment.isInstalled(c))AlpineEnvironment.installFromAssets(c);
+        try(InputStream in=c.getAssets().open("ranchu-engine.tar.gz")){
+            File archive=new File(c.getFilesDir(),"ranchu-engine.tar.gz");
+            try(OutputStream out=new FileOutputStream(archive)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)out.write(b);}
+            AlpineRuntime.run(c,"apk add --no-cache gcompat libstdc++ libgcc tar && mkdir -p /opt/ranchu && tar -xzf /workspace/ranchu-engine.tar.gz -C /opt/ranchu && chmod +x /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 && LD_LIBRARY_PATH=/opt/ranchu/lib64:/opt/ranchu/lib /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 --version");
+            bundledRanchu=true;
+            return;
+        }catch(FileNotFoundException noBundledEngine){
+            bundledRanchu=false;
+        }catch(Exception engineError){
+            bundledRanchu=false;
+        }
         AlpineRuntime.run(c,"printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n' > /etc/resolv.conf && apk update && apk add --no-cache qemu-system-aarch64 qemu-img");
         String v=AlpineRuntime.run(c,"qemu-system-aarch64 --version");
         if(!v.contains("QEMU"))throw new IOException("QEMU executable verification failed.");
@@ -27,12 +39,14 @@ public final class GuestVmManager {
         File userdata=new File(data,"userdata.img");
         if(!userdata.exists()){if(!userdataSource.isFile())throw new IOException("SDK package does not include userdata.img.");copy(userdataSource,userdata);}
         RuntimeCapabilities caps=RuntimeCapabilities.inspect(c);
-        String machineList=AlpineRuntime.run(c,"qemu-system-aarch64 -machine help");
+        String qemu=bundledRanchu?"/opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64":"qemu-system-aarch64";
+        String prefix=bundledRanchu?"export LD_LIBRARY_PATH=/opt/ranchu/lib64:/opt/ranchu/lib:$LD_LIBRARY_PATH; ":"";
+        String machineList=AlpineRuntime.run(c,prefix+qemu+" -machine help");
         String machine=machineList.toLowerCase().contains("ranchu")?"ranchu":"virt,gic-version=3";
         String accel=caps.hasUsableKvmPermissions()?"kvm":"tcg,thread=multi";
         int cpus=Math.max(1,Math.min(2,caps.processorCount));
         String root="/workspace/android-sdk/system-images/android-"+api+"/google_apis/arm64-v8a/";
-        StringBuilder q=new StringBuilder("exec qemu-system-aarch64 -machine "+machine+" -cpu max -smp "+cpus+" -m "+Math.max(512,ram)+" -accel '"+accel+"'");
+        StringBuilder q=new StringBuilder(prefix+"exec "+qemu+" -machine "+machine+" -cpu max -smp "+cpus+" -m "+Math.max(512,ram)+" -accel '"+accel+"'");
         q.append(" -kernel '").append(root).append(kernel.getName()).append("' -initrd '").append(root).append("ramdisk.img'");
         q.append(" -append 'console=ttyAMA0 androidboot.hardware=ranchu androidboot.serialno=experience-virtual-os'");
         q.append(" -device virtio-gpu-pci -device virtio-keyboard-pci -device virtio-tablet-pci");
