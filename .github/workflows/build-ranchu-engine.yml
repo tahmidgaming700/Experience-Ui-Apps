@@ -19,6 +19,11 @@ jobs:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
+      - name: Check out Experience Virtual OS source
+        uses: actions/checkout@v4
+        with:
+          ref: feat/experience-virtual-os-rootless
+
       - name: Free runner disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
