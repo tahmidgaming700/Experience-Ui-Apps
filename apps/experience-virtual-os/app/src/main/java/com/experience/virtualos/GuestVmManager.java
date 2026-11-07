@@ -27,10 +27,12 @@ public final class GuestVmManager {
         File userdata=new File(data,"userdata.img");
         if(!userdata.exists()){if(!userdataSource.isFile())throw new IOException("SDK package does not include userdata.img.");copy(userdataSource,userdata);}
         RuntimeCapabilities caps=RuntimeCapabilities.inspect(c);
+        String machineList=AlpineRuntime.run(c,"qemu-system-aarch64 -machine help");
+        String machine=machineList.toLowerCase().contains("ranchu")?"ranchu":"virt,gic-version=3";
         String accel=caps.hasUsableKvmPermissions()?"kvm":"tcg,thread=multi";
         int cpus=Math.max(1,Math.min(2,caps.processorCount));
         String root="/workspace/android-sdk/system-images/android-"+api+"/google_apis/arm64-v8a/";
-        StringBuilder q=new StringBuilder("exec qemu-system-aarch64 -machine virt,gic-version=3 -cpu max -smp "+cpus+" -m "+Math.max(512,ram)+" -accel '"+accel+"'");
+        StringBuilder q=new StringBuilder("exec qemu-system-aarch64 -machine "+machine+" -cpu max -smp "+cpus+" -m "+Math.max(512,ram)+" -accel '"+accel+"'");
         q.append(" -kernel '").append(root).append(kernel.getName()).append("' -initrd '").append(root).append("ramdisk.img'");
         q.append(" -append 'console=ttyAMA0 androidboot.hardware=ranchu androidboot.serialno=experience-virtual-os'");
         q.append(" -device virtio-gpu-pci -device virtio-keyboard-pci -device virtio-tablet-pci");
@@ -39,7 +41,14 @@ public final class GuestVmManager {
         if(vendor.isFile())q.append(" -drive 'file=").append(root).append("vendor.img,if=none,format=raw,id=vendor' -device virtio-blk-device,drive=vendor");
         q.append(" -drive 'file=").append(root).append("system.img,if=none,format=raw,id=system' -device virtio-blk-device,drive=system");
         q.append(" -display none -vnc 127.0.0.1:1 -monitor none -serial 'file=/workspace/guest-data/api-").append(api).append("/serial.log' -no-reboot");
-        log=new File(data,"qemu.log");process=AlpineRuntime.start(c,q.toString(),log);
+        log=new File(data,"qemu.log");
+        process=AlpineRuntime.start(c,q.toString(),log);
+        if("kvm".equals(accel)){
+            Thread.sleep(1800);
+            if(!process.isAlive()){
+                process=AlpineRuntime.start(c,q.toString().replace("-accel 'kvm'","-accel 'tcg,thread=multi'"),log);
+            }
+        }
     }
     public static synchronized void stop(){if(process!=null){process.destroy();try{if(!process.waitFor(2,java.util.concurrent.TimeUnit.SECONDS))process.destroyForcibly();}catch(InterruptedException e){Thread.currentThread().interrupt();process.destroyForcibly();}}process=null;}
     private static File pick(File dir,String...names){for(String n:names){File f=new File(dir,n);if(f.isFile())return f;}return new File(dir,names[0]);}
