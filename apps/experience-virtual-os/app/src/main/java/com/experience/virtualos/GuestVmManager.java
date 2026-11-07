@@ -44,9 +44,10 @@ public final class GuestVmManager {
         String machineList=AlpineRuntime.run(c,prefix+qemu+" -machine help");
         String machine=machineList.toLowerCase().contains("ranchu")?"ranchu":"virt,gic-version=3";
         String accel=caps.hasUsableKvmPermissions()?"kvm":"tcg,thread=multi";
+        String cpu=caps.hasUsableKvmPermissions()?"host":"max";
         int cpus=Math.max(1,Math.min(2,caps.processorCount));
         String root="/workspace/android-sdk/system-images/android-"+api+"/google_apis/arm64-v8a/";
-        StringBuilder q=new StringBuilder(prefix+"exec "+qemu+" -machine "+machine+" -cpu max -smp "+cpus+" -m "+Math.max(512,ram)+" -accel '"+accel+"'");
+        StringBuilder q=new StringBuilder(prefix+"exec "+qemu+" -machine "+machine+" -cpu "+cpu+" -smp "+cpus+" -m "+Math.max(512,ram)+" -accel '"+accel+"'");
         q.append(" -kernel '").append(root).append(kernel.getName()).append("' -initrd '").append(root).append("ramdisk.img'");
         q.append(" -append 'console=ttyAMA0 androidboot.hardware=ranchu androidboot.serialno=experience-virtual-os'");
         q.append(" -device virtio-gpu-pci -device virtio-keyboard-pci -device virtio-tablet-pci");
