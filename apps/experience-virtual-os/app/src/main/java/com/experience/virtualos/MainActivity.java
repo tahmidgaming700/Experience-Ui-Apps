@@ -25,6 +25,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.ArrayAdapter;
@@ -36,7 +37,8 @@ public final class MainActivity extends Activity {
     private static final String PREFS = "experience_virtual_os";
     private static final int PICK_IMAGE = 41;
     private static final String[] API_LEVELS = {"Android 9 (API 28)", "Android 10 (API 29)",
-            "Android 11 (API 30)", "Android 12 (API 31)", "Android 12L (API 32)", "Android 13 (API 33)"};
+            "Android 11 (API 30)", "Android 12 (API 31)", "Android 12L (API 32)", "Android 13 (API 33)",
+            "Android 14 (API 34)", "Android 15 (API 35)", "Android 16 (API 36)", "Android 17 (API 37)"};
     private static final String[] IMAGE_URLS = {
             "https://dl.google.com/android/repository/sys-img/google_apis_playstore/arm64-v8a-28_r01.zip",
             "https://dl.google.com/android/repository/sys-img/google_apis_playstore/arm64-v8a-29_r09-darwin.zip",
@@ -165,10 +167,11 @@ public final class MainActivity extends Activity {
                 renderWizard();
             });
         } else if (wizardStep == 1) {
-            base("YOUR ENVIRONMENT", "Configure your OS", "Choose an Android guest image and how you want the virtual system configured.");
+            base("YOUR ENVIRONMENT", "Configure your OS", "Choose the Android release and resources for your private virtual device.");
             LinearLayout c = card();
             c.addView(label("02  ANDROID VERSION", 12, 0xFF9DBBFF, true));
-            c.addView(label("Google ARM64 emulator images", 17, 0xFFF5F7FC, true));
+            c.addView(label("Android guest releases", 17, 0xFFF5F7FC, true));
+            c.addView(label("Android 17 is API 37. Guest image availability will be checked against Google SDK packages when runtime installation is integrated.", 13, 0xFFB8C4D8, false));
             Spinner versions = spinner(API_LEVELS, selectedApi);
             LinearLayout memory = card();
             memory.addView(label("MEMORY ALLOCATION", 12, 0xFF9DBBFF, true));
@@ -190,7 +193,7 @@ public final class MainActivity extends Activity {
             });
             button("Back", () -> { wizardStep = 0; renderWizard(); });
         } else {
-            base("READY TO BEGIN", "Your space is ready.", "You can add an Android system image now, or change these settings later.");
+            base("READY TO BEGIN", "Your virtual device is configured.", "Experience Virtual OS will now prepare its private system environment. Your phone Android remains unchanged.");
             LinearLayout c = card();
             c.addView(label("DEVICE", 12, 0xFF9DBBFF, true));
             c.addView(label(android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL, 18, 0xFFF5F7FC, true));
@@ -204,7 +207,7 @@ public final class MainActivity extends Activity {
                 prefs.edit().putBoolean("setup_complete", true)
                         .putString("language", selectedLanguage).putInt("api", selectedApi)
                         .putInt("memory", selectedMemory).putBoolean("guest_root", guestRoot).apply();
-                showHome();
+                beginEnvironmentSetup();
             });
             button("Back", () -> { wizardStep = 1; renderWizard(); });
         }
@@ -221,17 +224,14 @@ public final class MainActivity extends Activity {
         status.addView(label("ROOTLESS HOST", 12, 0xFF9DBBFF, true));
         status.addView(label("Huawei Android remains untouched", 18, 0xFFF5F7FC, true));
         status.addView(label("No host root, bootloader unlock or system partition access is requested.", 14, 0xFFB8C4D8, false));
-        LinearLayout alpine = card();
-        alpine.addView(label("ALPINE LINUX  /  ARM64", 12, 0xFF9DBBFF, true));
-        alpine.addView(label(AlpineEnvironment.isInstalled(this) ? "Alpine system installed" : "Alpine system ready to install", 19, 0xFFF5F7FC, true));
-        alpine.addView(label("A minimal Alpine ARM64 root filesystem is bundled into this build and installed into private app storage. It does not modify Android or require root.", 13, 0xFFB8C4D8, false));
-        alpine.addView(label(AlpineEnvironment.isInstalled(this)
-                ? "Root filesystem: " + AlpineEnvironment.root(this).getAbsolutePath()
-                : "Package: official Alpine minirootfs • architecture: aarch64", 12, 0xFF91A2BA, false));
+        LinearLayout foundation = card();
+        foundation.addView(label("SYSTEM FOUNDATION", 12, 0xFF9DBBFF, true));
+        foundation.addView(label(AlpineEnvironment.isInstalled(this) ? "Base environment prepared" : "Base environment not prepared", 19, 0xFFF5F7FC, true));
+        foundation.addView(label("Private system components are stored inside Experience Virtual OS. They do not modify your phone or require root.", 13, 0xFFB8C4D8, false));
         if (!AlpineEnvironment.isInstalled(this)) {
-            cardButton(alpine, "Install Alpine environment", this::installAlpine);
+            cardButton(foundation, "Prepare system environment", this::beginEnvironmentSetup);
         } else {
-            alpine.addView(label("Next runtime milestone: integrate PRoot and a terminal session. Alpine files are installed; this build does not yet claim to execute an Alpine shell.", 12, 0xFFFFD18A, false));
+            foundation.addView(label("The base files are ready. Android virtual-machine runtime and guest image installation are still being integrated.", 12, 0xFFFFD18A, false));
         }
 
         LinearLayout updates = card();
@@ -254,9 +254,9 @@ public final class MainActivity extends Activity {
         config.addView(label("Guest root: " + (prefs.getBoolean("guest_root", false) ? "requested (image-dependent)" : "off"), 13, 0xFFB8C4D8, false));
         LinearLayout sources = card();
         sources.addView(label("ANDROID SYSTEM LIBRARY", 12, 0xFF9DBBFF, true));
-        sources.addView(label("Google ARM64 • API 28–33", 18, 0xFFF5F7FC, true));
-        sources.addView(label("Download an official SDK system-image package. The package still needs a compatible emulator runtime and may not boot on this phone.", 13, 0xFFB8C4D8, false));
-        for (int i = 0; i < API_LEVELS.length; i++) {
+        sources.addView(label("Android guest releases • API 28–37", 18, 0xFFF5F7FC, true));
+        sources.addView(label("SDK Manager integration and ARM64 image compatibility checks are required before an Android guest can be launched.", 13, 0xFFB8C4D8, false));
+        for (int i = 0; i < IMAGE_URLS.length; i++) {
             final int index = i;
             Button download = new Button(this);
             download.setText("Download " + API_LEVELS[i]);
@@ -278,8 +278,8 @@ public final class MainActivity extends Activity {
         });
         LinearLayout runtime = card();
         runtime.addView(label("VIRTUAL MACHINE STATUS", 12, 0xFF9DBBFF, true));
-        runtime.addView(label("VM engine not integrated yet", 17, 0xFFFFD18A, true));
-        runtime.addView(label("This build can configure the app and download/import images. It does not claim to boot Android guests until the QEMU runtime, Android machine profile, display, input and networking are integrated and tested.", 13, 0xFFB8C4D8, false));
+        runtime.addView(label("Android virtual device engine in development", 17, 0xFFFFD18A, true));
+        runtime.addView(label("The guest desktop will appear here when the ARM64 virtual-machine engine, Android guest image, display and touch integration have passed device testing.", 13, 0xFFB8C4D8, false));
         button("Restart setup wizard", () -> {
             prefs.edit().putBoolean("setup_complete", false).apply();
             showWizard();
@@ -310,18 +310,57 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void beginEnvironmentSetup() {
+        base("EXPERIENCE VIRTUAL OS SETUP", "Preparing your virtual device", "Please keep Experience Virtual OS open while the private system foundation is prepared.");
+        LinearLayout panel = card();
+        panel.addView(label("INSTALLATION", 12, 0xFF9DBBFF, true));
+        TextView stage = label("Preparing system components…", 17, 0xFFF5F7FC, true);
+        panel.addView(stage);
+        ProgressBar progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setIndeterminate(true);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-1, dp(9));
+        pp.topMargin = dp(18);
+        pp.bottomMargin = dp(12);
+        panel.addView(progress, pp);
+        TextView detail = label("Verifying the private environment. No host system changes are made.", 13, 0xFFB8C4D8, false);
+        panel.addView(detail);
+        new Thread(() -> {
+            try {
+                if (!AlpineEnvironment.isInstalled(this)) {
+                    mainHandler.post(() -> stage.setText("Installing system foundation…"));
+                    AlpineEnvironment.installFromAssets(this);
+                }
+                if (!AlpineEnvironment.isInstalled(this)) throw new java.io.IOException("System foundation verification failed");
+                mainHandler.post(() -> {
+                    progress.setIndeterminate(false);
+                    progress.setProgress(100);
+                    stage.setText("System foundation prepared");
+                    detail.setText("Your private base environment is ready. Android guest runtime components will be installed when their device-compatible build is available.");
+                    button("Continue to Experience Virtual OS", this::showHome);
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> {
+                    progress.setIndeterminate(false);
+                    stage.setText("Setup could not be completed");
+                    detail.setText("Please try again. " + e.getMessage());
+                    button("Retry setup", this::beginEnvironmentSetup);
+                });
+            }
+        }, "experience-system-setup").start();
+    }
+
     private void installAlpine() {
-        Toast.makeText(this, "Installing Alpine ARM64 root filesystem…", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Preparing private system components…", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
                 AlpineEnvironment.installFromAssets(this);
                 mainHandler.post(() -> {
-                    Toast.makeText(this, "Alpine root filesystem installed.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "System foundation prepared.", Toast.LENGTH_LONG).show();
                     showHome();
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> Toast.makeText(this,
-                        "Alpine installation failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                        "System preparation failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
             }
         }, "alpine-rootfs-installer").start();
     }
