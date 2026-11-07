@@ -12,31 +12,36 @@ public final class RfbClient implements AutoCloseable {
     private Bitmap bitmap; private int width,height;
     public RfbClient(Listener l){listener=l;}
     public void run(){
-        try {
-            socket=new Socket(); socket.connect(new InetSocketAddress("127.0.0.1",5901),20000); socket.setTcpNoDelay(true);
-            in=new DataInputStream(new BufferedInputStream(socket.getInputStream())); out=new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
-            byte[] version=new byte[12]; in.readFully(version); write("RFB 003.008\\n".getBytes("US-ASCII"));
-            int count=in.readUnsignedByte(); if(count==0){int n=in.readInt();byte[] why=new byte[Math.max(0,Math.min(n,4096))];in.readFully(why);throw new IOException(new String(why,"UTF-8"));}
-            boolean none=false; for(int i=0;i<count;i++) if(in.readUnsignedByte()==1) none=true;
-            if(!none) throw new IOException("VNC server does not offer local no-auth mode.");
-            sendByte(1); if(in.readInt()!=0) throw new IOException("VNC handshake failed."); sendByte(1);
-            width=in.readUnsignedShort();height=in.readUnsignedShort();byte[] pf=new byte[16];in.readFully(pf);
-            int nameLen=in.readInt();if(nameLen<0||nameLen>65536)throw new IOException("Invalid VNC server name.");byte[] name=new byte[nameLen];in.readFully(name);
-            if(width<1||height<1||(long)width*height>16000000)throw new IOException("Invalid framebuffer dimensions.");
-            bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
-            synchronized(lock){out.writeByte(0);out.write(new byte[3]);out.writeByte(32);out.writeByte(24);out.writeByte(0);out.writeByte(1);
-                out.writeShort(255);out.writeShort(255);out.writeShort(255);out.writeByte(16);out.writeByte(8);out.writeByte(0);out.write(new byte[3]);
-                out.writeByte(2);out.writeByte(0);out.writeShort(2);out.writeInt(0);out.writeInt(-223);out.flush();}
-            listener.connected(width,height); request(false);
-            while(running){
-                int type=in.readUnsignedByte();
-                if(type==0){in.readUnsignedByte();int n=in.readUnsignedShort();for(int i=0;i<n;i++) rectangle();listener.frame(bitmap);request(true);}
-                else if(type==2) { }
-                else if(type==3){in.readUnsignedByte();int len=in.readInt();if(len<0||len>65536)throw new IOException("Invalid clipboard data");byte[] skip=new byte[len];in.readFully(skip);}
-                else throw new IOException("Unsupported VNC message "+type);
+        Exception last=null;
+        long deadline=System.currentTimeMillis()+30000L;
+        while(running && System.currentTimeMillis()<deadline){
+            try {
+                socket=new Socket(); socket.connect(new InetSocketAddress("127.0.0.1",5901),2500); socket.setTcpNoDelay(true);
+                in=new DataInputStream(new BufferedInputStream(socket.getInputStream())); out=new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
+                handshake(); readLoop(); return;
+            } catch(Exception e){
+                last=e; closeSocket();
+                if(!running) return;
+                try{Thread.sleep(500);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();return;}
             }
-        } catch(Exception e){if(running)listener.error(e.getMessage()==null?"Guest display disconnected":e.getMessage());}
-        finally{closeSocket();}
+        }
+        if(running) listener.error(last==null?"Timed out waiting for QEMU display":last.getMessage());
+        closeSocket();
+    }
+    private void handshake() throws IOException {
+        byte[] version=new byte[12]; in.readFully(version); write("RFB 003.008\\n".getBytes("US-ASCII"));
+        int count=in.readUnsignedByte(); if(count==0){int n=in.readInt();byte[] why=new byte[Math.max(0,Math.min(n,4096))];in.readFully(why);throw new IOException(new String(why,"UTF-8"));}
+        boolean none=false; for(int i=0;i<count;i++) if(in.readUnsignedByte()==1) none=true;
+        if(!none) throw new IOException("VNC server does not offer local no-auth mode.");
+        sendByte(1); if(in.readInt()!=0) throw new IOException("VNC handshake failed."); sendByte(1);
+        width=in.readUnsignedShort();height=in.readUnsignedShort();byte[] pf=new byte[16];in.readFully(pf);
+        int nameLen=in.readInt();if(nameLen<0||nameLen>65536)throw new IOException("Invalid VNC server name.");byte[] name=new byte[nameLen];in.readFully(name);
+        if(width<1||height<1||(long)width*height>16000000)throw new IOException("Invalid framebuffer dimensions.");
+        bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+        synchronized(lock){out.writeByte(0);out.write(new byte[3]);out.writeByte(32);out.writeByte(24);out.writeByte(0);out.writeByte(1);
+            out.writeShort(255);out.writeShort(255);out.writeShort(255);out.writeByte(16);out.writeByte(8);out.writeByte(0);out.write(new byte[3]);
+            out.writeByte(2);out.writeByte(0);out.writeShort(2);out.writeInt(0);out.writeInt(-223);out.flush();}
+        listener.connected(width,height); request(false);
     }
     private void rectangle() throws IOException {
         int x=in.readUnsignedShort(),y=in.readUnsignedShort(),w=in.readUnsignedShort(),h=in.readUnsignedShort(),enc=in.readInt();
