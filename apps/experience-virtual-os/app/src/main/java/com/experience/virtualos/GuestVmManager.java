@@ -65,11 +65,14 @@ public final class GuestVmManager {
 
         File imageDir = new File(SdkManagerBootstrap.sdkRoot(context),
                 "system-images/android-" + api + "/google_apis/arm64-v8a");
-        File kernel = pick(imageDir, "kernel-ranchu-64", "kernel-ranchu");
+        File kernel = bundledKernel(context);
         File ramdisk = new File(imageDir, "ramdisk.img");
         File system = new File(imageDir, "system.img");
-        if (!kernel.isFile() || !ramdisk.isFile() || !system.isFile()) {
-            throw new IOException("The selected ARM64 SDK image is incomplete. Install its kernel, ramdisk and system image first.");
+        if (!kernel.isFile() || kernel.length() != 6157664L) {
+            throw new IOException("The bundled Google ARM64 kernel-qemu is missing or has an unexpected size.");
+        }
+        if (!ramdisk.isFile() || !system.isFile()) {
+            throw new IOException("The selected ARM64 SDK image is incomplete. Install its ramdisk and system image first.");
         }
 
         File data = new File(context.getFilesDir(), "guest-data/api-" + api);
@@ -80,7 +83,7 @@ public final class GuestVmManager {
         if (bundledRanchu) {
             startWithAndroidEmulator(context, api, memoryMb, capabilities, data);
         } else {
-            startWithGenericQemu(context, api, memoryMb, capabilities, imageDir, data);
+            startWithGenericQemu(context, api, memoryMb, capabilities, imageDir, kernel, data);
         }
 
         if (capabilities.hasUsableKvmPermissions() && process != null) {
@@ -149,7 +152,7 @@ public final class GuestVmManager {
     }
 
     private static void startWithGenericQemu(Context context, int api, int memoryMb,
-            RuntimeCapabilities capabilities, File imageDir, File data) throws Exception {
+            RuntimeCapabilities capabilities, File imageDir, File kernel, File data) throws Exception {
         File userdataSource = new File(imageDir, "userdata.img");
         File userdata = new File(data, "userdata.img");
         if (!userdata.exists()) {
@@ -164,12 +167,13 @@ public final class GuestVmManager {
         String cpu = kvm ? "host" : "max";
         int cpus = Math.max(1, Math.min(2, capabilities.processorCount));
         String root = "/workspace/android-sdk/system-images/android-" + api + "/google_apis/arm64-v8a/";
+        String kernelPath = "/workspace/kernels/kernel-qemu";
         StringBuilder command = new StringBuilder("exec " + qemu + " -machine " + machine
                 + " -cpu " + cpu + " -smp " + cpus + " -m " + Math.max(512, memoryMb)
                 + " -accel '" + accel + "'");
-        command.append(" -kernel '").append(root).append(pick(imageDir, "kernel-ranchu-64", "kernel-ranchu").getName()).append("'")
+        command.append(" -kernel '").append(kernelPath).append("'")
                 .append(" -initrd '").append(root).append("ramdisk.img'")
-                .append(" -append 'console=ttyAMA0 androidboot.hardware=ranchu androidboot.serialno=experience-virtual-os'")
+                .append(" -append 'console=ttyAMA0 androidboot.hardware=virt androidboot.serialno=experience-virtual-os'")
                 .append(" -device virtio-gpu-pci -device virtio-keyboard-pci -device virtio-tablet-pci")
                 .append(" -netdev user,id=net0 -device virtio-net-pci,netdev=net0")
                 .append(" -drive 'file=").append(root).append("system.img,if=none,format=raw,id=system' -device virtio-blk-device,drive=system");
@@ -200,6 +204,25 @@ public final class GuestVmManager {
             }
         }
         process = null;
+    }
+
+    private static File bundledKernel(Context context) throws IOException {
+        File directory = new File(context.getFilesDir(), "kernels");
+        if (!directory.exists() && !directory.mkdirs()) throw new IOException("Cannot create private kernel directory.");
+        File destination = new File(directory, "kernel-qemu");
+        if (destination.isFile() && destination.length() == 6157664L) return destination;
+        try (InputStream input = context.getAssets().open("kernel/kernel-qemu");
+             OutputStream output = new FileOutputStream(destination)) {
+            byte[] buffer = new byte[65536];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            output.flush();
+        }
+        if (destination.length() != 6157664L) {
+            destination.delete();
+            throw new IOException("Bundled kernel-qemu failed its size check.");
+        }
+        return destination;
     }
 
     private static File pick(File dir, String... names) {
