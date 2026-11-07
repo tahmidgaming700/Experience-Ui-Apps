@@ -65,7 +65,7 @@ jobs:
           test -f "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64"
           "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64" --version
           tar -C "$RUNNER_TEMP/ranchu-runtime" -czf "$RUNNER_TEMP/experience-ranchu-qemu-arm64.tar.gz" .
-          sha256sum "$RUNNER_TEMP/experience-ranchu-qemu-arm64.tar.gz" > "$RUNNER_TEMP/experience-ranchu-qemu-arm64.tar.gz.sha256"
+          (cd "$RUNNER_TEMP" && sha256sum experience-ranchu-qemu-arm64.tar.gz > experience-ranchu-qemu-arm64.tar.gz.sha256)
 
       - name: Upload Android Ranchu QEMU runtime
         uses: actions/upload-artifact@v4
