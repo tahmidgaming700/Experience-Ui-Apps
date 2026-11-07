@@ -250,7 +250,15 @@ public final class MainActivity extends Activity {
         sources.addView(label("Android guest releases • API 28–37", 18, 0xFFF5F7FC, true));
         sources.addView(label("The private SDK Manager can install selected Android platform and ARM64 guest-image packages. The virtual machine engine and interactive guest display are the next integration stages.", 13, 0xFFB8C4D8, false));
         cardButton(sources, "Install selected Android SDK + system image", this::installSdkManager);
-        sources.addView(label("The private SDK Manager installs the Android 17 platform and requests the ARM64 Google APIs system image. Downloads and command output stay inside the app.", 12, 0xFFB8C4D8, false));
+        cardButton(sources, "Install virtual machine engine", this::installGuestEngine);
+        cardButton(sources, "Start Android guest", this::startAndroidGuest);
+        cardButton(sources, "Open live guest display", this::openGuestDisplay);
+        cardButton(sources, "Stop Android guest", () -> {
+            GuestVmManager.stop();
+            Toast.makeText(this, "Android guest stopped.", Toast.LENGTH_SHORT).show();
+        });
+        cardButton(sources, "View guest runtime log", this::showGuestLog);
+        sources.addView(label("The private SDK Manager installs the selected Android platform and ARM64 Google APIs system image. The guest engine, framebuffer and touch controls are managed separately.", 12, 0xFFB8C4D8, false));
         button("Import another guest image", this::chooseImage);
         button("Change guest configuration", () -> {
             selectedApi = prefs.getInt("api", 0);
@@ -266,8 +274,8 @@ public final class MainActivity extends Activity {
         runtime.addView(label(capabilities.accelerationSummary(), 13, 0xFFB8C4D8, false));
         runtime.addView(label("These are host checks only. A visible KVM node does not prove that a compatible guest machine can boot. Experience Virtual OS will not request root or change your bootloader.", 12, 0xFFFFD18A, false));
         runtime.addView(label("VIRTUAL MACHINE STATUS", 12, 0xFF9DBBFF, true));
-        runtime.addView(label("Android guest engine not installed", 17, 0xFFFFD18A, true));
-        runtime.addView(label("The Android guest display and touch session will be enabled only after the engine and matching guest image pass an on-device boot test.", 13, 0xFFB8C4D8, false));
+        runtime.addView(label(GuestVmManager.isRunning() ? "Android guest process running" : "Android guest process stopped", 17, 0xFFFFD18A, true));
+        runtime.addView(label("The guest launcher now starts QEMU and connects its localhost VNC framebuffer to the in-app touch display. Actual Android boot compatibility is reported by the guest serial and QEMU logs.", 13, 0xFFB8C4D8, false));
         button("Restart setup wizard", () -> {
             prefs.edit().putBoolean("setup_complete", false).apply();
             showWizard();
@@ -296,6 +304,80 @@ public final class MainActivity extends Activity {
         } catch (Exception e) {
             return "unknown";
         }
+    }
+
+    private void installGuestEngine() {
+        showRuntimeProgress("Installing ARM64 virtual machine engine", "Preparing QEMU inside the private Alpine environment…", () -> {
+            try {
+                GuestVmManager.installEngine(this);
+                mainHandler.post(() -> { Toast.makeText(this, "QEMU engine installed.", Toast.LENGTH_LONG).show(); showHome(); });
+            } catch (Exception e) {
+                mainHandler.post(() -> showRuntimeError("Engine installation failed", e));
+            }
+        });
+    }
+
+    private void startAndroidGuest() {
+        showRuntimeProgress("Starting Android guest", "Preparing the selected SDK image, guest storage and virtual hardware…", () -> {
+            try {
+                GuestVmManager.start(this, 28 + prefs.getInt("api", 0), prefs.getInt("memory", 1024));
+                Thread.sleep(2500);
+                if (!GuestVmManager.isRunning()) {
+                    File log = GuestVmManager.logFile();
+                    String tail = readTail(log, 5000);
+                    throw new java.io.IOException("QEMU exited before the guest display became available. " + tail);
+                }
+                mainHandler.post(() -> startActivity(new Intent(this, GuestDisplayActivity.class)));
+            } catch (Exception e) {
+                mainHandler.post(() -> showRuntimeError("Android guest could not start", e));
+            }
+        });
+    }
+
+    private void openGuestDisplay() {
+        if (!GuestVmManager.isRunning()) {
+            Toast.makeText(this, "Start the Android guest first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        startActivity(new Intent(this, GuestDisplayActivity.class));
+    }
+
+    private void showGuestLog() {
+        File log = GuestVmManager.logFile();
+        String output = readTail(log, 12000);
+        if (output.isEmpty()) output = "No QEMU log is available yet. Start the Android guest first.";
+        new AlertDialog.Builder(this).setTitle("Guest runtime log").setMessage(output)
+                .setPositiveButton("Close", null).show();
+    }
+
+    private String readTail(File file, int maxChars) {
+        if (file == null || !file.isFile()) return "";
+        try (java.io.RandomAccessFile input = new java.io.RandomAccessFile(file, "r")) {
+            long length = input.length();
+            long start = Math.max(0, length - maxChars);
+            input.seek(start);
+            byte[] data = new byte[(int) (length - start)];
+            input.readFully(data);
+            return new String(data, "UTF-8");
+        } catch (Exception e) { return e.getMessage() == null ? "" : e.getMessage(); }
+    }
+
+    private void showRuntimeProgress(String heading, String initial, Runnable task) {
+        base("VIRTUAL DEVICE RUNTIME", heading, "The runtime is managed privately. No shell or terminal is exposed.");
+        LinearLayout panel = card();
+        TextView stage = label(initial, 16, 0xFFF5F7FC, true);
+        panel.addView(stage);
+        ProgressBar progress = new ProgressBar(this);
+        progress.setIndeterminate(true);
+        panel.addView(progress);
+        button("Return to dashboard", this::showHome);
+        new Thread(task, "experience-guest-runtime").start();
+    }
+
+    private void showRuntimeError(String heading, Exception error) {
+        String message = error.getMessage() == null ? error.toString() : error.getMessage();
+        new AlertDialog.Builder(this).setTitle(heading).setMessage(message)
+                .setPositiveButton("OK", (d, w) -> showHome()).show();
     }
 
     private void installSdkManager() {
