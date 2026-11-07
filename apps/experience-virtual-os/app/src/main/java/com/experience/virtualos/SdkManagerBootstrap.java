@@ -20,7 +20,8 @@ public final class SdkManagerBootstrap {
             "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip";
     private static final String TOOLS_SHA256 =
             "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583";
-    private static final int API_LEVEL = 37;
+    private static final int MIN_API_LEVEL = 28;
+    private static final int MAX_API_LEVEL = 37;
 
     public interface Progress {
         void onStage(String stage);
@@ -32,7 +33,8 @@ public final class SdkManagerBootstrap {
         return new File(context.getFilesDir(), "android-sdk");
     }
 
-    public static void installAndroid17(Context context, Progress progress) throws Exception {
+    public static void installSelectedGuest(Context context, int apiLevel, Progress progress) throws Exception {
+        if (apiLevel < MIN_API_LEVEL || apiLevel > MAX_API_LEVEL) throw new IOException("Unsupported Android API level: " + apiLevel);
         if (!isArm64()) throw new IOException("The SDK runtime installer currently requires an ARM64 host.");
         if (!AlpineEnvironment.isInstalled(context)) AlpineEnvironment.installFromAssets(context);
 
@@ -76,13 +78,13 @@ public final class SdkManagerBootstrap {
                 "chmod +x " + quote(manager) + " && yes | " + quote(manager)
                         + " --sdk_root=" + quote(sdkPath) + " --licenses");
 
-        progress.onStage("Installing Android 17 platform and ARM64 system image…");
+        progress.onStage("Installing Android API " + apiLevel + " platform and ARM64 system image…");
         AlpineRuntime.run(context,
                 quote(manager) + " --sdk_root=" + quote(sdkPath)
-                        + " --channel=0 \"platforms;android-" + API_LEVEL + "\""
+                        + " --channel=0 \"platforms;android-" + apiLevel + "\""
                         + " \"system-images;android-" + API_LEVEL
                         + ";google_apis;arm64-v8a\"");
-        new File(context.getFilesDir(), ".android17-sdk-installed").createNewFile();
+        new File(context.getFilesDir(), ".android-api-" + apiLevel + "-sdk-installed").createNewFile();
     }
 
     private static boolean isArm64() {
