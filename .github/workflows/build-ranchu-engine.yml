@@ -15,6 +15,9 @@ jobs:
   build-ranchu:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Free runner disk space
         run: |
@@ -76,4 +79,39 @@ jobs:
           path: |
             ${{ runner.temp }}/experience-ranchu-qemu-arm64.tar.gz
             ${{ runner.temp }}/experience-ranchu-qemu-arm64.tar.gz.sha256
+          retention-days: 30
+
+      - name: Set up JDK 17 for Experience Virtual OS
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android app build SDK
+        run: |
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Bundle Ranchu engine into Experience Virtual OS
+        run: |
+          mkdir -p apps/experience-virtual-os/app/src/main/assets
+          cp "$RUNNER_TEMP/experience-ranchu-qemu-arm64.tar.gz" \
+            apps/experience-virtual-os/app/src/main/assets/ranchu-engine.tar.gz
+
+      - name: Build Experience Virtual OS with official Ranchu engine
+        working-directory: apps/experience-virtual-os
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload Experience Virtual OS Ranchu APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-virtual-os-ranchu-debug
+          path: apps/experience-virtual-os/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           retention-days: 30
