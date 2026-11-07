@@ -171,7 +171,7 @@ public final class MainActivity extends Activity {
             LinearLayout c = card();
             c.addView(label("02  ANDROID VERSION", 12, 0xFF9DBBFF, true));
             c.addView(label("Android guest releases", 17, 0xFFF5F7FC, true));
-            c.addView(label("Android 17 is API 37. Guest image availability will be checked against Google SDK packages when runtime installation is integrated.", 13, 0xFFB8C4D8, false));
+            c.addView(label("Android 17 is API 37. Experience Virtual OS uses Google's SDK package manager to resolve and install available platform and ARM64 guest-image packages.", 13, 0xFFB8C4D8, false));
             Spinner versions = spinner(API_LEVELS, selectedApi);
             LinearLayout memory = card();
             memory.addView(label("MEMORY ALLOCATION", 12, 0xFF9DBBFF, true));
@@ -256,18 +256,8 @@ public final class MainActivity extends Activity {
         sources.addView(label("ANDROID SYSTEM LIBRARY", 12, 0xFF9DBBFF, true));
         sources.addView(label("Android guest releases • API 28–37", 18, 0xFFF5F7FC, true));
         sources.addView(label("SDK Manager integration and ARM64 image compatibility checks are required before an Android guest can be launched.", 13, 0xFFB8C4D8, false));
-        for (int i = 0; i < IMAGE_URLS.length; i++) {
-            final int index = i;
-            Button download = new Button(this);
-            download.setText("Download " + API_LEVELS[i]);
-            download.setAllCaps(false);
-            download.setTextColor(0xFFE8EEF8);
-            download.setBackground(shape(0xFF26374D, 15));
-            download.setOnClickListener(v -> downloadImage(index));
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(48));
-            p.topMargin = dp(7);
-            sources.addView(download, p);
-        }
+        cardButton(sources, "Install Android SDK Manager + Android 17", this::installSdkManager);
+        sources.addView(label("The private SDK Manager installs the Android 17 platform and requests the ARM64 Google APIs system image. Downloads and command output stay inside the app.", 12, 0xFFB8C4D8, false));
         button("Import another guest image", this::chooseImage);
         button("Change guest configuration", () -> {
             selectedApi = prefs.getInt("api", 0);
@@ -313,6 +303,44 @@ public final class MainActivity extends Activity {
         } catch (Exception e) {
             return "unknown";
         }
+    }
+
+    private void installSdkManager() {
+        base("ANDROID SDK INSTALLER", "Installing Android 17", "Experience Virtual OS is preparing its private Linux runtime and Android SDK. No terminal will be shown.");
+        LinearLayout panel = card();
+        panel.addView(label("INSTALLATION PROGRESS", 12, 0xFF9DBBFF, true));
+        TextView stage = label("Preparing private environment…", 17, 0xFFF5F7FC, true);
+        panel.addView(stage);
+        ProgressBar progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setIndeterminate(true);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-1, dp(9));
+        pp.topMargin = dp(16);
+        pp.bottomMargin = dp(12);
+        panel.addView(progress, pp);
+        TextView details = label("The SDK packages are installed into app-private storage.", 13, 0xFFB8C4D8, false);
+        panel.addView(details);
+        new Thread(() -> {
+            try {
+                SdkManagerBootstrap.installAndroid17(this,
+                        message -> mainHandler.post(() -> stage.setText(message)));
+                mainHandler.post(() -> {
+                    progress.setIndeterminate(false);
+                    progress.setProgress(100);
+                    stage.setText("Android SDK installation completed");
+                    details.setText("Android 17 platform and ARM64 Google APIs system-image packages were accepted by SDK Manager.");
+                    button("Return to Experience Virtual OS", this::showHome);
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> {
+                    progress.setIndeterminate(false);
+                    stage.setText("SDK installation needs attention");
+                    String message = e.getMessage() == null ? "Unknown installation error" : e.getMessage();
+                    details.setText(message.length() > 900 ? message.substring(0, 900) : message);
+                    button("Retry SDK installation", this::installSdkManager);
+                    button("Return to dashboard", this::showHome);
+                });
+            }
+        }, "experience-sdk-manager").start();
     }
 
     private void beginEnvironmentSetup() {
