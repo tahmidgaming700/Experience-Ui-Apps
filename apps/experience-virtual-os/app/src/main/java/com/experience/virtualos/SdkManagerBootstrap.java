@@ -82,7 +82,7 @@ public final class SdkManagerBootstrap {
         AlpineRuntime.run(context,
                 quote(manager) + " --sdk_root=" + quote(sdkPath)
                         + " --channel=0 \"platforms;android-" + apiLevel + "\""
-                        + " \"system-images;android-" + API_LEVEL
+                        + " \"system-images;android-" + apiLevel
                         + ";google_apis;arm64-v8a\"");
         new File(context.getFilesDir(), ".android-api-" + apiLevel + "-sdk-installed").createNewFile();
     }
