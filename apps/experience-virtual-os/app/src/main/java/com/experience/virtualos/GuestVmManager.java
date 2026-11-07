@@ -37,10 +37,10 @@ public final class GuestVmManager {
         q.append(" -append 'console=ttyAMA0 androidboot.hardware=ranchu androidboot.serialno=experience-virtual-os'");
         q.append(" -device virtio-gpu-pci -device virtio-keyboard-pci -device virtio-tablet-pci");
         q.append(" -netdev user,id=net0 -device virtio-net-pci,netdev=net0");
-        q.append(" -drive 'file=/workspace/guest-data/api-").append(api).append("/userdata.img,if=none,format=raw,id=userdata' -device virtio-blk-device,drive=userdata");
-        if(vendor.isFile())q.append(" -drive 'file=").append(root).append("vendor.img,if=none,format=raw,id=vendor' -device virtio-blk-device,drive=vendor");
         q.append(" -drive 'file=").append(root).append("system.img,if=none,format=raw,id=system' -device virtio-blk-device,drive=system");
-        q.append(" -display none -vnc 127.0.0.1:1 -monitor none -serial 'file=/workspace/guest-data/api-").append(api).append("/serial.log' -no-reboot");
+        if(vendor.isFile())q.append(" -drive 'file=").append(root).append("vendor.img,if=none,format=raw,id=vendor' -device virtio-blk-device,drive=vendor");
+        q.append(" -drive 'file=/workspace/guest-data/api-").append(api).append("/userdata.img,if=none,format=raw,id=userdata' -device virtio-blk-device,drive=userdata");
+        q.append(" -vnc 127.0.0.1:1 -monitor none -serial 'file=/workspace/guest-data/api-").append(api).append("/serial.log' -no-reboot");
         log=new File(data,"qemu.log");
         process=AlpineRuntime.start(c,q.toString(),log);
         if("kvm".equals(accel)){
