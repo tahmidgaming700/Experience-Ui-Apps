@@ -133,18 +133,19 @@ redistributable releases.
 The app now has a guest execution path, rather than only preparing SDK packages:
 
 - QEMU is installed inside the private Alpine rootfs as a fallback engine.
-- A separate CI workflow cross-compiles the Android Emulator's Ranchu-enabled
-  QEMU engine for Linux ARM64 using Google's documented `linux_aarch64` build
-  target. The resulting runtime artifact is checksummed and made available to
-  the app APK build; when present, it is preferred over generic Alpine QEMU.
-- The guest launcher detects whether the selected QEMU binary exposes the
-  Android `ranchu` machine and selects it when available. The generic Alpine
-  QEMU fallback uses its ARM `virt` machine.
-- The launcher attaches the selected SDK kernel, ramdisk, system, vendor and
-  private userdata images, and requests KVM acceleration when the host exposes
-  a readable and writable `/dev/kvm`. If KVM startup exits immediately, it
-  retries with TCG software emulation.
-- QEMU exposes its display only on `127.0.0.1:5901`. The Android app contains
+- A separate CI workflow cross-compiles Google's Android Emulator distribution
+  for Linux ARM64 using the documented `linux_aarch64` target. The complete
+  distribution (AVD launcher, Ranchu QEMU engine, libraries and support files)
+  is checksummed and made available to the APK build.
+- When the official engine is bundled, the app creates an AVD profile for the
+  selected SDK image and starts Google's `emulator` launcher with SwiftShader
+  software graphics, the selected RAM/CPU profile, and the Ranchu machine. The
+  Alpine QEMU package remains a generic ARM `virt` fallback.
+- The AVD launcher resolves the SDK kernel, ramdisk, system, vendor and writable
+  userdata images from the selected SDK package. It requests KVM acceleration
+  when the host exposes a readable and writable `/dev/kvm`; otherwise it
+  selects software emulation.
+- The emulator passes a QEMU VNC display on `127.0.0.1:5901`. The Android app contains
   an RFB 3.8 client that draws framebuffer updates and forwards touch pointer
   events and keyboard input to the guest. No VNC port is exposed to the LAN.
 - Dashboard actions provide engine installation, guest start/stop, display
