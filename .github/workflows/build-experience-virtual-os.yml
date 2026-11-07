@@ -64,22 +64,18 @@ jobs:
           request = urllib.request.Request(base + "/", headers={"User-Agent": "Experience-Virtual-OS-CI"})
           with urllib.request.urlopen(request, timeout=30) as response:
               index = response.read().decode("utf-8", "replace")
-          matches = re.findall(r'href="(alpine-minirootfs-([0-9.]+)-aarch64\.tar\.gz)"', index)
+          matches = re.findall(r"alpine-minirootfs-([0-9]+(?:\.[0-9]+){2})-aarch64\.tar\.gz", index)
           if not matches:
               raise SystemExit("Could not locate the official Alpine ARM64 minirootfs archive")
-          filename, version = max(matches, key=lambda item: tuple(int(part) for part in item[1].split(".")))
+          version = max(matches, key=lambda value: tuple(int(part) for part in value.split(".")))
+          filename = f"alpine-minirootfs-{version}-aarch64.tar.gz"
           with urllib.request.urlopen(base + "/" + filename, timeout=60) as response:
               archive = response.read()
-          with urllib.request.urlopen(base + "/SHA256SUMS", timeout=30) as response:
-              sums = response.read().decode("utf-8", "replace")
-          expected = None
-          for line in sums.splitlines():
-              fields = line.split()
-              if len(fields) >= 2 and fields[-1].lstrip("*") == filename:
-                  expected = fields[0].lower()
-                  break
+          with urllib.request.urlopen(base + "/" + filename + ".sha256", timeout=30) as response:
+              checksum_text = response.read().decode("utf-8", "replace")
+          expected = checksum_text.split()[0].lower()
           if not expected:
-              raise SystemExit("Alpine SHA256SUMS did not contain " + filename)
+              raise SystemExit("Alpine checksum file was empty for " + filename)
           actual = hashlib.sha256(archive).hexdigest()
           if actual != expected:
               raise SystemExit("Alpine minirootfs checksum mismatch")
