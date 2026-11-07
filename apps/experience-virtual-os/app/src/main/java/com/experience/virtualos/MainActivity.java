@@ -40,14 +40,6 @@ public final class MainActivity extends Activity {
     private static final String[] API_LEVELS = {"Android 9 (API 28)", "Android 10 (API 29)",
             "Android 11 (API 30)", "Android 12 (API 31)", "Android 12L (API 32)", "Android 13 (API 33)",
             "Android 14 (API 34)", "Android 15 (API 35)", "Android 16 (API 36)", "Android 17 (API 37)"};
-    private static final String[] IMAGE_URLS = {
-            "https://dl.google.com/android/repository/sys-img/google_apis_playstore/arm64-v8a-28_r01.zip",
-            "https://dl.google.com/android/repository/sys-img/google_apis_playstore/arm64-v8a-29_r09-darwin.zip",
-            "https://dl.google.com/android/repository/sys-img/google_apis_playstore/arm64-v8a-30_r10-darwin.zip",
-            "https://dl.google.com/android/repository/sys-img/google_apis_playstore/arm64-v8a-31_r06-darwin.zip",
-            "https://dl.google.com/android/repository/sys-img/google_apis_playstore/arm64-v8a-32_r03-darwin.zip",
-            "https://dl.google.com/android/repository/sys-img/google_apis_playstore/arm64-v8a-33_r06-darwin.zip"
-    };
 
     private SharedPreferences prefs;
     private LinearLayout page;
@@ -572,25 +564,6 @@ public final class MainActivity extends Activity {
                     Uri.parse("https://github.com/tahmidgaming700/Experience-Ui-Apps/releases")));
         } catch (Exception e) {
             Toast.makeText(this, "No browser is available.", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void downloadImage(int index) {
-        try {
-            String filename = "experience-android-api-" + (28 + index) + "-arm64.zip";
-            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(IMAGE_URLS[index]));
-            request.setTitle("Experience Virtual OS — " + API_LEVELS[index]);
-            request.setDescription("Downloading official Google ARM64 SDK image package");
-            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            request.setAllowedOverMetered(true);
-            request.setAllowedOverRoaming(false);
-            request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, filename);
-            DownloadManager manager = (DownloadManager)getSystemService(Context.DOWNLOAD_SERVICE);
-            long id = manager.enqueue(request);
-            prefs.edit().putLong("download_" + index, id).apply();
-            Toast.makeText(this, "Download queued. Check the notification shade for progress.", Toast.LENGTH_LONG).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "Could not start download: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
