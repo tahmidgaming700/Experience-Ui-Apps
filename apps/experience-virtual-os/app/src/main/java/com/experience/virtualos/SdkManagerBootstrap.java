@@ -67,7 +67,7 @@ public final class SdkManagerBootstrap {
 
         progress.onStage("Preparing private Java runtime…");
         AlpineRuntime.run(context,
-                "apk update && apk add --no-cache openjdk17-jre-headless ca-certificates bash unzip");
+                "printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n' > /etc/resolv.conf && apk update && apk add --no-cache openjdk17-jre-headless ca-certificates bash unzip");
 
         String sdkPath = "/workspace/android-sdk";
         String manager = sdkPath + "/cmdline-tools/latest/bin/sdkmanager";
