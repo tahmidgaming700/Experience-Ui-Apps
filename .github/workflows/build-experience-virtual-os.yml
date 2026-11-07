@@ -6,12 +6,14 @@ on:
     branches:
       - main
       - feat/experience-virtual-os-rootless
+    tags:
+      - "v*"
     paths:
       - "apps/experience-virtual-os/**"
       - ".github/workflows/build-experience-virtual-os.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -62,7 +64,7 @@ jobs:
           request = urllib.request.Request(base + "/", headers={"User-Agent": "Experience-Virtual-OS-CI"})
           with urllib.request.urlopen(request, timeout=30) as response:
               index = response.read().decode("utf-8", "replace")
-          matches = re.findall(r'href="(alpine-minirootfs-([0-9.]+)-aarch64\\.tar\\.gz)"', index)
+          matches = re.findall(r'href="(alpine-minirootfs-([0-9.]+)-aarch64\.tar\.gz)"', index)
           if not matches:
               raise SystemExit("Could not locate the official Alpine ARM64 minirootfs archive")
           filename, version = max(matches, key=lambda item: tuple(int(part) for part in item[1].split(".")))
@@ -90,6 +92,14 @@ jobs:
       - name: Build debug APK
         working-directory: apps/experience-virtual-os
         run: gradle --no-daemon assembleDebug
+
+      - name: Publish tagged GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Experience Virtual OS ${{ github.ref_name }}
+          generate_release_notes: true
+          files: apps/experience-virtual-os/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
