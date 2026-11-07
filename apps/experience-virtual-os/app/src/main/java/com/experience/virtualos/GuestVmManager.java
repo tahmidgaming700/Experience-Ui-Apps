@@ -12,6 +12,10 @@ public final class GuestVmManager {
     public static synchronized File logFile(){return log;}
     public static synchronized void installEngine(Context c)throws Exception{
         if(!AlpineEnvironment.isInstalled(c))AlpineEnvironment.installFromAssets(c);
+        try {
+            String existing=AlpineRuntime.run(c,"test -x /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 && LD_LIBRARY_PATH=/opt/ranchu/lib64:/opt/ranchu/lib /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 --version");
+            if(existing.contains("QEMU")){bundledRanchu=true;return;}
+        } catch(Exception notInstalled) { bundledRanchu=false; }
         try(InputStream in=c.getAssets().open("ranchu-engine.tar.gz")){
             File archive=new File(c.getFilesDir(),"ranchu-engine.tar.gz");
             try(OutputStream out=new FileOutputStream(archive)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)out.write(b);}
