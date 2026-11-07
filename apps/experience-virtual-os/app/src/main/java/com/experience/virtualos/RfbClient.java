@@ -43,6 +43,27 @@ public final class RfbClient implements AutoCloseable {
             out.writeByte(2);out.writeByte(0);out.writeShort(2);out.writeInt(0);out.writeInt(-223);out.flush();}
         listener.connected(width,height); request(false);
     }
+    private void readLoop() throws IOException {
+        while(running){
+            int type=in.readUnsignedByte();
+            if(type==0){
+                in.readUnsignedByte();
+                int count=in.readUnsignedShort();
+                for(int i=0;i<count;i++) rectangle();
+                listener.frame(bitmap);
+                request(true);
+            }else if(type==2){
+                // Server bell; no audio is required for framebuffer updates.
+            }else if(type==3){
+                in.readUnsignedByte();
+                int length=in.readInt();
+                if(length<0||length>65536)throw new IOException("Invalid VNC clipboard payload.");
+                byte[] ignored=new byte[length];in.readFully(ignored);
+            }else{
+                throw new IOException("Unsupported VNC server message "+type);
+            }
+        }
+    }
     private void rectangle() throws IOException {
         int x=in.readUnsignedShort(),y=in.readUnsignedShort(),w=in.readUnsignedShort(),h=in.readUnsignedShort(),enc=in.readInt();
         if(enc==-223){if(w<1||h<1||(long)w*h>16000000)throw new IOException("Invalid framebuffer resize");width=w;height=h;bitmap=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);return;}
