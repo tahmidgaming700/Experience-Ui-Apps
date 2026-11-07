@@ -38,7 +38,7 @@ public final class GuestVmManager {
                 int count;
                 while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
             }
-            String verify = "apk update && apk add --no-cache gcompat libstdc++ libgcc tar "
+            String verify = "apk update && apk add --no-cache gcompat libstdc++ libgcc tar libx11 libxext libxrender libxrandr libxi libxfixes libxcb libxkbcommon libxkbcommon-x11 fontconfig freetype dbus-libs "
                     + "&& mkdir -p /opt/ranchu && tar -xzf /workspace/ranchu-engine.tar.gz -C /opt/ranchu "
                     + "&& chmod +x /opt/ranchu/emulator /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64-headless "
                     + "&& LD_LIBRARY_PATH=/opt/ranchu/lib64:/opt/ranchu/lib /opt/ranchu/emulator -version";
