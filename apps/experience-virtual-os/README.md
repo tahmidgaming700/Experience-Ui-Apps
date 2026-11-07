@@ -126,3 +126,34 @@ its published SHA-256 manifest, and packaged as extracted native libraries.
 The project is GPL-3.0; the upstream Termux PRoot code is GPL-2.0-or-later.
 Review the bundled third-party notices and source obligations before publishing
 redistributable releases.
+
+
+## ARM64 Android guest runtime and display
+
+The app now has a guest execution path, rather than only preparing SDK packages:
+
+- QEMU is installed inside the private Alpine rootfs as a fallback engine.
+- A separate CI workflow cross-compiles the Android Emulator's Ranchu-enabled
+  QEMU engine for Linux ARM64 using Google's documented `linux_aarch64` build
+  target. The resulting runtime artifact is checksummed and made available to
+  the app APK build; when present, it is preferred over generic Alpine QEMU.
+- The guest launcher detects whether the selected QEMU binary exposes the
+  Android `ranchu` machine and selects it when available. The generic Alpine
+  QEMU fallback uses its ARM `virt` machine.
+- The launcher attaches the selected SDK kernel, ramdisk, system, vendor and
+  private userdata images, and requests KVM acceleration when the host exposes
+  a readable and writable `/dev/kvm`. If KVM startup exits immediately, it
+  retries with TCG software emulation.
+- QEMU exposes its display only on `127.0.0.1:5901`. The Android app contains
+  an RFB 3.8 client that draws framebuffer updates and forwards touch pointer
+  events and keyboard input to the guest. No VNC port is exposed to the LAN.
+- Dashboard actions provide engine installation, guest start/stop, display
+  reopen and runtime log inspection.
+
+The Google Ranchu engine build is separate because ordinary upstream QEMU's
+generic ARM `virt` board is not equivalent to Android's Ranchu board. The
+generic fallback is useful for engine and display-path diagnostics, but it
+cannot be treated as proof that an official Android SDK image will boot.
+Actual Android boot, graphics and input compatibility still require the
+on-device run. The guest display is therefore not represented as a verified
+successful Android boot until the device test confirms it.
