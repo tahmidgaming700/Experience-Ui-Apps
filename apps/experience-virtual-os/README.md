@@ -1,48 +1,61 @@
 # Experience Virtual OS
 
-An independently implemented, rootless Android guest-environment project inspired by the OneOS product concept. It is not a direct port of OneOS's privileged hot-switch engine.
+A rootless Android virtual-device application inspired by the convenience of a desktop AVD manager, designed around a mobile-first setup experience.
 
-## Target
+## Product experience
 
-- Android 9 (API 28) and newer host devices.
-- ARM64-first, with Huawei Y9 2019 (JKM-LX2 / Kirin 710 / EMUI 9.1) as a compatibility research target.
-- No host root, Magisk, KernelSU, bootloader unlock or host partition modifications.
-- Optional guest-root preference is guest-only and image-dependent.
+The user-facing flow is an operating-system installer: welcome, language, Android guest version, memory, private environment preparation, then the virtual-device home. Internal Linux components and command execution are implementation details and are not exposed as a user terminal.
+
+## Host requirements and safety
+
+- Android 9 (API 28) and newer.
+- ARM64-first; Huawei Y9 2019 (JKM-LX2 / Kirin 710 / EMUI 9.1) is a target for compatibility testing.
+- No host root, bootloader unlock, Magisk, KernelSU or host partition modification.
+- Any future guest-root option applies only inside a compatible guest image.
+
+## Android guest targets
+
+The setup catalogue includes Android 9 through Android 17 (API 28–37). Android 17 is API 37. Selecting a guest API level is configuration only: the corresponding ARM64 system image must be discovered and downloaded from Google's SDK package repository before that guest can be launched.
+
+Google's SDK Manager downloads SDK platforms, tools and system-image packages. It does not itself provide a mobile-ready emulator runtime. The standard Android Emulator package is a separate host executable and cannot be assumed to run on an ARM64 Android phone. The intended phone runtime is a separately built ARM64 QEMU system emulator using TCG software emulation, with a compatible Android guest machine profile.
 
 ## Current alpha implementation
 
-- Native first-run setup for language, Android guest API, RAM profile and guest-root preference.
-- Rootless host dashboard and Android ARM64 image library.
-- Download manager integration for supplied Google ARM64 SDK image packages (API 28–33).
-- Import flow for user-provided guest image files.
-- **Alpine Linux ARM64 bootstrap:** CI downloads the official Alpine minirootfs from Alpine's latest-stable ARM64 release directory, verifies its SHA-256 against Alpine's published SHA256SUMS, and bundles it into the APK. The app extracts it into private app storage without root.
-- **GitHub update centre:** checks published releases in this repository, shows release notes, downloads a release APK, and opens Android's package installer after the user grants the app permission to request package installs.
-- Custom geometric launcher icon and dark, native Android interface.
+- Native first-run installer-style setup for language, Android guest API level, RAM and guest-root preference.
+- Private base-environment bootstrap: CI fetches the latest stable Alpine ARM64 minirootfs from the official Alpine mirror, verifies its SHA-256 checksum and bundles it into the APK. The app installs it into app-private storage during first-run preparation.
+- Base-environment preparation screen with a progress indicator. Internal Linux implementation details are not exposed as a user terminal.
+- Existing Google ARM64 SDK image package downloads for the supplied API 28–33 archive URLs, plus image import.
+- GitHub Releases update centre: checks releases, displays notes, downloads APK assets and invokes Android's package installer with user approval.
+- Release workflow only publishes an installable APK when a persistent signing keystore is configured through Actions secrets.
 
-## Runtime status — read carefully
+## Runtime status — important
 
-The Alpine root filesystem can be installed into app-private storage. **This milestone does not yet execute an Alpine shell.** The next required component is a compatible ARM64 PRoot/native process runtime and terminal session. An Android app cannot simply chroot into Alpine without root, and the rootfs installer does not pretend otherwise.
+The base Alpine filesystem is installed as data. **It is not yet launched as a Linux process environment.** A compatible Android ARM64 PRoot/process layer, a Java runtime for SDK command-line tools, SDK package discovery/installation, and secure lifecycle management are still required.
 
-**The Android guest VM is not integrated yet.** A working Android guest still requires a compatible QEMU ARM64 TCG build for Android, a validated Android guest machine/kernel/ramdisk/system/vendor layout, storage and lifecycle management, and display/input/network integration. The Google SDK ZIPs are system-image packages, not standalone emulator applications. No Android guest boot is claimed until that complete path is implemented and tested on target hardware.
+**The Android virtual machine is not yet implemented.** The remaining runtime work includes a QEMU ARM64 TCG build suitable for Android, Android guest image validation (kernel, ramdisk, system/vendor and userdata layout), virtual hardware configuration, storage, networking, display rendering, touch/keyboard input, audio and VM lifecycle. No Android guest boot or live VNC display is claimed until it is built and tested on the target phone.
+
+The intended guest display is an in-app surface. A local VNC server is one possible display transport, but it must be integrated and secured inside the app; it is not currently included.
 
 ## App updates
 
-Push a version tag such as v0.2.0-alpha01 to build the APK. To publish an installable release, configure the repository Actions secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD with the same persistent signing key used for every release. The workflow deliberately skips release publishing if these secrets are absent: debug APKs signed with temporary CI keys cannot update an installed copy. The in-app updater reads published releases and selects the first APK asset. Android's package installer always asks the user to approve installation; the app does not silently update itself.
+Push a version tag such as `v0.2.0-alpha01` to build an APK. To publish an installable release, configure the repository Actions secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` with the same persistent signing key used for every release. If these secrets are absent, the workflow skips release publishing. Android's package installer always asks the user to approve an update.
 
 ## Build
 
 JDK 17, Android SDK Platform 35 and Gradle 8.9:
 
-    gradle --no-daemon assembleDebug
+```sh
+gradle --no-daemon assembleDebug
+```
 
-Output: app/build/outputs/apk/debug/app-debug.apk.
+Output: `app/build/outputs/apk/debug/app-debug.apk`.
 
-The GitHub Actions workflow fetches and verifies the Alpine ARM64 root filesystem before building. The APK is uploaded as a workflow artifact. Tag pushes beginning with v publish a GitHub Release containing a consistently signed APK only when the four signing secrets are configured.
+The GitHub Actions workflow fetches and verifies the Alpine ARM64 root filesystem before building. The APK is uploaded as a workflow artifact. Version tags beginning with `v` publish a GitHub Release only when release signing secrets are configured.
 
 ## OneOS relationship
 
-The public OneOS repository contains app code and patch/build tooling, not a ready-to-download guest image archive. Its original switcher uses privileged operations that conflict with this project's unrooted-host requirement. This project is an independent implementation; it does not copy or invoke the privileged switcher.
+This is an independent implementation inspired by the OneOS product concept. The original OneOS switcher uses privileged operations that conflict with the unrooted-host requirement. This app does not copy or invoke that privileged switcher.
 
-## Licences and image provenance
+## Image provenance
 
-Alpine minirootfs is obtained from the official Alpine Linux mirror at build time and checksum-verified against Alpine's published checksum file. Google SDK images remain Google's materials and are downloaded by the user from Google rather than redistributed by this project. OneOS is Apache-2.0; see https://github.com/fahadalijaved/OneOS for upstream notices and credits.
+Alpine minirootfs is obtained from the official Alpine Linux mirror and checksum-verified at build time. Google SDK images are Google's materials and are downloaded from Google's SDK repositories by the app/runtime rather than redistributed in this repository.
