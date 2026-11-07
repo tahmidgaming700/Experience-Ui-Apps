@@ -59,10 +59,10 @@ jobs:
           DIST="$(dirname "$(dirname "$(dirname "$BIN")")")"
           test -d "$DIST/qemu"
           mkdir -p "$RUNNER_TEMP/ranchu-runtime"
-          cp -a "$DIST/qemu" "$RUNNER_TEMP/ranchu-runtime/"
-          if [ -d "$DIST/lib64" ]; then cp -a "$DIST/lib64" "$RUNNER_TEMP/ranchu-runtime/"; fi
-          if [ -d "$DIST/lib" ]; then cp -a "$DIST/lib" "$RUNNER_TEMP/ranchu-runtime/"; fi
+          cp -a "$DIST/." "$RUNNER_TEMP/ranchu-runtime/"
+          test -f "$RUNNER_TEMP/ranchu-runtime/emulator"
           test -f "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64"
+          file "$RUNNER_TEMP/ranchu-runtime/emulator"
           file "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64"
           readelf -h "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64" | grep -E "Machine:.*AArch64"
           tar -C "$RUNNER_TEMP/ranchu-runtime" -czf "$RUNNER_TEMP/experience-ranchu-qemu-arm64.tar.gz" .
