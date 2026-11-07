@@ -26,7 +26,7 @@ public final class AlpineRuntime {
     public static String run(Context context, String command) throws IOException, InterruptedException {
         Process p=builder(context,command).start(); StringBuilder out=new StringBuilder();
         try(BufferedReader r=new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-            String line; while((line=r.readLine())!=null) if(out.length()<24000) out.append(line).append('\\n');
+            String line; while((line=r.readLine())!=null) if(out.length()<24000) out.append(line).append('\n');
         }
         int exit=p.waitFor();
         if(exit!=0) throw new IOException("Private setup command failed (exit "+exit+"): "+out.toString().trim());
