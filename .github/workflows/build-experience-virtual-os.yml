@@ -50,6 +50,43 @@ jobs:
           gradle --version
           "${ANDROID_HOME}/platform-tools/adb" version
 
+      - name: Fetch and verify Alpine ARM64 minirootfs
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import pathlib
+          import re
+          import urllib.request
+
+          base = "https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/aarch64"
+          request = urllib.request.Request(base + "/", headers={"User-Agent": "Experience-Virtual-OS-CI"})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              index = response.read().decode("utf-8", "replace")
+          matches = re.findall(r'href="(alpine-minirootfs-([0-9.]+)-aarch64\\.tar\\.gz)"', index)
+          if not matches:
+              raise SystemExit("Could not locate the official Alpine ARM64 minirootfs archive")
+          filename, version = max(matches, key=lambda item: tuple(int(part) for part in item[1].split(".")))
+          with urllib.request.urlopen(base + "/" + filename, timeout=60) as response:
+              archive = response.read()
+          with urllib.request.urlopen(base + "/SHA256SUMS", timeout=30) as response:
+              sums = response.read().decode("utf-8", "replace")
+          expected = None
+          for line in sums.splitlines():
+              fields = line.split()
+              if len(fields) >= 2 and fields[-1].lstrip("*") == filename:
+                  expected = fields[0].lower()
+                  break
+          if not expected:
+              raise SystemExit("Alpine SHA256SUMS did not contain " + filename)
+          actual = hashlib.sha256(archive).hexdigest()
+          if actual != expected:
+              raise SystemExit("Alpine minirootfs checksum mismatch")
+          destination = pathlib.Path("apps/experience-virtual-os/app/src/main/assets/alpine/alpine-minirootfs.tar.gz")
+          destination.parent.mkdir(parents=True, exist_ok=True)
+          destination.write_bytes(archive)
+          print(f"Verified Alpine {version} ARM64 minirootfs: {len(archive)} bytes")
+          PY
+
       - name: Build debug APK
         working-directory: apps/experience-virtual-os
         run: gradle --no-daemon assembleDebug
