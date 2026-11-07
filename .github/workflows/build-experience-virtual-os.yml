@@ -103,6 +103,26 @@ jobs:
           file apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot.so
           file apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
 
+      - name: Retrieve latest successful Android Ranchu ARM64 engine
+        id: ranchu
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_ID="$(gh run list --workflow build-ranchu-engine.yml --branch feat/experience-virtual-os-rootless --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful Ranchu engine build is available yet; the app will retain its Alpine QEMU fallback."
+            exit 0
+          fi
+          mkdir -p /tmp/ranchu-artifact
+          gh run download "$RUN_ID" --name experience-ranchu-qemu-arm64 --dir /tmp/ranchu-artifact
+          cd /tmp/ranchu-artifact
+          sha256sum -c experience-ranchu-qemu-arm64.tar.gz.sha256
+          mkdir -p "$GITHUB_WORKSPACE/apps/experience-virtual-os/app/src/main/assets"
+          cp experience-ranchu-qemu-arm64.tar.gz "$GITHUB_WORKSPACE/apps/experience-virtual-os/app/src/main/assets/ranchu-engine.tar.gz"
+          echo "Ranchu ARM64 engine bundled from workflow run $RUN_ID"
+
       - name: Prepare release signing key
         id: signing
         if: startsWith(github.ref, 'refs/tags/')
