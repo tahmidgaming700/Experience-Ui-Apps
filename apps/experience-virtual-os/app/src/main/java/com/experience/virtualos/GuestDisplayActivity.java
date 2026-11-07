@@ -34,6 +34,7 @@ public final class GuestDisplayActivity extends Activity implements RfbClient.Li
     private final class GuestSurface extends View{
         private final Paint p=new Paint(Paint.FILTER_BITMAP_FLAG);private Bitmap image;private float scale,ox,oy;private boolean down;
         GuestSurface(Context c){super(c);setFocusable(true);setFocusableInTouchMode(true);}
+        @Override public boolean onCheckIsTextEditor() { return true; }
         @Override public InputConnection onCreateInputConnection(EditorInfo attrs) {
             attrs.inputType=InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
             attrs.imeOptions=EditorInfo.IME_ACTION_NONE|EditorInfo.IME_FLAG_NO_EXTRACT_UI;
