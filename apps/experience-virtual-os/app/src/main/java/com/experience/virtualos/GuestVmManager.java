@@ -142,6 +142,7 @@ public final class GuestVmManager {
                 + " -no-window -no-audio -no-snapshot -no-boot-anim"
                 + " -gpu swiftshader_indirect -memory " + Math.max(512, memoryMb)
                 + " -cores 2 -accel " + (kvm ? "on" : "off")
+                + " -show-kernel -verbose"
                 + " -qemu -vnc 127.0.0.1:1"
                 + " -serial file:/workspace/guest-data/api-" + api + "/serial.log";
         process = AlpineRuntime.start(context, command, log);
