@@ -59,3 +59,40 @@ This is an independent implementation inspired by the OneOS product concept. The
 ## Image provenance
 
 Alpine minirootfs is obtained from the official Alpine Linux mirror and checksum-verified at build time. Google SDK images are Google's materials and are downloaded from Google's SDK repositories by the app/runtime rather than redistributed in this repository.
+
+
+## Runtime feasibility and current implementation boundary
+
+The app now performs read-only host checks for ARM64 support, available memory,
+CPU count, and the presence/read/write permissions of `/dev/kvm`. These checks
+are diagnostic only: an accessible KVM node does not prove that a usable Android
+guest machine profile or graphics path exists.
+
+The five runtime milestones remain distinct engineering tasks:
+
+1. **Private Linux execution:** the bundled Alpine root filesystem is currently
+   extracted as private app data. It is not yet started. A rootless process
+   supervisor such as PRoot must be built for Android/Bionic, bundled with its
+   dependencies, and validated under the target device's SELinux and ptrace rules.
+2. **SDK tooling:** Google's command-line SDK tools require a compatible Java
+   runtime. Installing Alpine packages alone does not make `sdkmanager` runnable
+   inside an Android app; the Java runtime, SDK tools, package licences, storage,
+   and process execution all need integration.
+3. **Guest images:** SDK system-image packages are designed for Google's Android
+   Emulator/AVD runtime. Android 17 GSI downloads are a separate distribution
+   intended for supported physical-device GSI testing/flashing; they are not
+   turnkey QEMU virtual-machine disks.
+4. **Virtual-machine engine:** upstream QEMU can emulate ARM guests with TCG, but
+   Google's emulator images rely on the Android Emulator's own machine/device
+   model. A generic upstream QEMU ARM board is not a drop-in replacement for the
+   emulator's ranchu/goldfish devices. The app needs a compatible guest kernel,
+   machine model, devices, and boot configuration.
+5. **Interactive display:** only after a guest reaches a stable boot can the app
+   attach a local display/input transport (for example, a loopback-only VNC
+   bridge or an in-process renderer). No network listener should be exposed to
+   the LAN, and no terminal UI is part of the product.
+
+The current release therefore does not claim to boot Android. The host capability
+panel is intended to establish whether hardware acceleration is even available
+on the target phone before selecting and building the correct engine. TCG-only
+emulation may be too slow for a usable Android desktop on a mid-range phone.
