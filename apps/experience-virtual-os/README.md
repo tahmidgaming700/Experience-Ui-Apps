@@ -100,8 +100,8 @@ emulation may be too slow for a usable Android desktop on a mid-range phone.
 
 ## Private Android SDK installation
 
-The dashboard now includes an in-app **Install Android SDK Manager + Android 17**
-action. The installer:
+The dashboard now includes an in-app **Install selected Android SDK + system image**
+action. The installer uses the API level selected in the setup wizard (Android 9 through Android 17). It:
 
 - Extracts the bundled Alpine ARM64 root filesystem into app-private storage.
 - Starts Alpine through the bundled ARM64 PRoot executable and its Android
