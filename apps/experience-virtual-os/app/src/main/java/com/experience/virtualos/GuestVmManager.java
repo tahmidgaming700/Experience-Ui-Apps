@@ -22,7 +22,7 @@ public final class GuestVmManager {
 
         try {
             String existing = AlpineRuntime.run(context,
-                    "test -x /opt/ranchu/emulator && LD_LIBRARY_PATH=/opt/ranchu/lib64:/opt/ranchu/lib /opt/ranchu/emulator -version");
+                    "test -x /opt/ranchu/emulator && test -x /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64-headless && LD_LIBRARY_PATH=/opt/ranchu/lib64:/opt/ranchu/lib /opt/ranchu/emulator -version");
             if (existing.toLowerCase().contains("emulator")) {
                 bundledRanchu = true;
                 return;
@@ -40,7 +40,7 @@ public final class GuestVmManager {
             }
             String verify = "apk update && apk add --no-cache gcompat libstdc++ libgcc tar "
                     + "&& mkdir -p /opt/ranchu && tar -xzf /workspace/ranchu-engine.tar.gz -C /opt/ranchu "
-                    + "&& chmod +x /opt/ranchu/emulator /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 "
+                    + "&& chmod +x /opt/ranchu/emulator /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64 /opt/ranchu/qemu/linux-aarch64/qemu-system-aarch64-headless "
                     + "&& LD_LIBRARY_PATH=/opt/ranchu/lib64:/opt/ranchu/lib /opt/ranchu/emulator -version";
             String output = AlpineRuntime.run(context, verify);
             if (!output.toLowerCase().contains("emulator")) throw new IOException("Android Emulator launcher verification failed.");
