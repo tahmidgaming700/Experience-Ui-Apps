@@ -1,65 +1,39 @@
 package com.experience.virtualos;
 
 import android.content.Context;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.util.Map;
 
-/** Runs private Linux commands without exposing a shell UI to the user. */
+/** Runs private Alpine commands without presenting a terminal to the user. */
 public final class AlpineRuntime {
     private AlpineRuntime() {}
-
-    public static String run(Context context, String command) throws IOException, InterruptedException {
-        if (!AlpineEnvironment.isInstalled(context)) {
-            throw new IOException("The private Linux environment has not been installed.");
-        }
+    private static ProcessBuilder builder(Context context, String command) throws IOException {
+        if (!AlpineEnvironment.isInstalled(context)) throw new IOException("Private Linux environment is not installed.");
         File nativeDir = new File(context.getApplicationInfo().nativeLibraryDir);
-        File proot = new File(nativeDir, "libproot.so");
-        File loader = new File(nativeDir, "libproot-loader.so");
-        if (!proot.isFile() || !loader.isFile()) {
-            throw new IOException("The ARM64 private execution engine is not bundled in this build.");
-        }
-        File root = AlpineEnvironment.root(context);
-        File workspace = context.getFilesDir();
+        File proot = new File(nativeDir, "libproot.so"), loader = new File(nativeDir, "libproot-loader.so");
+        if (!proot.isFile() || !loader.isFile()) throw new IOException("ARM64 PRoot runtime is missing from this build.");
         File tmp = new File(context.getCacheDir(), "proot-tmp");
         if (!tmp.exists() && !tmp.mkdirs()) throw new IOException("Cannot create private runtime cache.");
-
-        ProcessBuilder builder = new ProcessBuilder(
-                proot.getAbsolutePath(),
-                "--kill-on-exit",
-                "--link2symlink",
-                "-0",
-                "-r", root.getAbsolutePath(),
-                "-b", "/dev",
-                "-b", "/proc",
-                "-b", "/sys",
-                "-b", workspace.getAbsolutePath() + ":/workspace",
-                "-w", "/root",
-                "/bin/sh", "-c", command
-        );
-        Map<String, String> env = builder.environment();
-        env.put("PROOT_LOADER", loader.getAbsolutePath());
-        env.put("PROOT_TMP_DIR", tmp.getAbsolutePath());
-        env.put("HOME", "/root");
-        env.put("LANG", "C.UTF-8");
-        env.put("TERM", "dumb");
-        builder.redirectErrorStream(true);
-        Process process = builder.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (output.length() < 24000) output.append(line).append('\n');
-            }
+        ProcessBuilder b = new ProcessBuilder(proot.getAbsolutePath(), "--kill-on-exit", "--link2symlink", "-0",
+                "-r", AlpineEnvironment.root(context).getAbsolutePath(), "-b", "/dev", "-b", "/proc", "-b", "/sys",
+                "-b", context.getFilesDir().getAbsolutePath() + ":/workspace", "-w", "/root", "/bin/sh", "-c", command);
+        Map<String,String> e=b.environment();
+        e.put("PROOT_LOADER",loader.getAbsolutePath()); e.put("PROOT_TMP_DIR",tmp.getAbsolutePath());
+        e.put("HOME","/root"); e.put("LANG","C.UTF-8"); e.put("TERM","dumb"); e.put("TMPDIR","/tmp"); e.put("QEMU_AUDIO_DRV","none");
+        b.redirectErrorStream(true);
+        return b;
+    }
+    public static String run(Context context, String command) throws IOException, InterruptedException {
+        Process p=builder(context,command).start(); StringBuilder out=new StringBuilder();
+        try(BufferedReader r=new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String line; while((line=r.readLine())!=null) if(out.length()<24000) out.append(line).append('\\n');
         }
-        int exit = process.waitFor();
-        if (exit != 0) {
-            throw new IOException("Private setup command failed (exit " + exit + "): "
-                    + output.toString().trim());
-        }
-        return output.toString();
+        int exit=p.waitFor();
+        if(exit!=0) throw new IOException("Private setup command failed (exit "+exit+"): "+out.toString().trim());
+        return out.toString();
+    }
+    public static Process start(Context context,String command,File log) throws IOException {
+        File parent=log.getParentFile(); if(parent!=null&&!parent.exists()&&!parent.mkdirs()) throw new IOException("Cannot create runtime log directory.");
+        ProcessBuilder b=builder(context,command); b.redirectOutput(log); return b.start();
     }
 }
