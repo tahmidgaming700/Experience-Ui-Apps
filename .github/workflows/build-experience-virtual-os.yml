@@ -118,7 +118,7 @@ jobs:
           data = path.read_bytes()
           expected_size = 6157664
           expected_git_blob = "6c2586739fab700a48c3440732c80262fc7875bd"
-          actual_git_blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\\0" + data).hexdigest()
+          actual_git_blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
           if len(data) != expected_size:
               raise SystemExit(f"Unexpected kernel size: {len(data)} bytes")
           if actual_git_blob != expected_git_blob:
