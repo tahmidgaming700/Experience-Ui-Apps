@@ -183,7 +183,7 @@ public final class GuestVmManager {
             Thread.sleep(1800);
             if (!process.isAlive()) {
                 process = AlpineRuntime.start(context,
-                        command.toString().replace("-accel 'kvm'", "-accel 'tcg,thread=multi'"));
+                        command.toString().replace("-accel 'kvm'", "-accel 'tcg,thread=multi'"), log);
             }
         }
     }
