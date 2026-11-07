@@ -154,6 +154,16 @@ jobs:
         working-directory: apps/experience-virtual-os
         run: gradle --no-daemon assembleDebug
 
+      - name: Verify bundled assets inside debug APK
+        run: |
+          set -euo pipefail
+          APK="apps/experience-virtual-os/app/build/outputs/apk/debug/app-debug.apk"
+          unzip -Z1 "$APK" | grep -Fx 'assets/alpine/alpine-minirootfs.tar.gz'
+          unzip -Z1 "$APK" | grep -Fx 'assets/kernel/kernel-qemu'
+          unzip -p "$APK" assets/alpine/alpine-minirootfs.tar.gz | gzip -t
+          test "$(unzip -p "$APK" assets/alpine/alpine-minirootfs.tar.gz | wc -c)" -gt 1000000
+          echo "Verified Alpine archive and Google ARM64 kernel are present in the installable APK."
+
       - name: Build signed release APK
         if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.ready == 'true'
         working-directory: apps/experience-virtual-os
