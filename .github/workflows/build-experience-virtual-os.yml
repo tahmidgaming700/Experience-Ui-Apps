@@ -85,17 +85,45 @@ jobs:
           print(f"Verified Alpine {version} ARM64 minirootfs: {len(archive)} bytes")
           PY
 
+      - name: Prepare release signing key
+        id: signing
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets are not configured; no installable release will be published."
+            exit 0
+          fi
+          KEYSTORE_PATH="$RUNNER_TEMP/experience-virtual-os-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
       - name: Build debug APK
         working-directory: apps/experience-virtual-os
         run: gradle --no-daemon assembleDebug
 
+      - name: Build signed release APK
+        if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.ready == 'true'
+        working-directory: apps/experience-virtual-os
+        run: gradle --no-daemon assembleRelease
+
       - name: Publish tagged GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
           name: Experience Virtual OS ${{ github.ref_name }}
           generate_release_notes: true
-          files: apps/experience-virtual-os/app/build/outputs/apk/debug/app-debug.apk
+          files: apps/experience-virtual-os/app/build/outputs/apk/release/app-release.apk
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
