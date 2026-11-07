@@ -63,7 +63,8 @@ jobs:
           if [ -d "$DIST/lib64" ]; then cp -a "$DIST/lib64" "$RUNNER_TEMP/ranchu-runtime/"; fi
           if [ -d "$DIST/lib" ]; then cp -a "$DIST/lib" "$RUNNER_TEMP/ranchu-runtime/"; fi
           test -f "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64"
-          "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64" --version
+          file "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64"
+          readelf -h "$RUNNER_TEMP/ranchu-runtime/qemu/linux-aarch64/qemu-system-aarch64" | grep -E "Machine:.*AArch64"
           tar -C "$RUNNER_TEMP/ranchu-runtime" -czf "$RUNNER_TEMP/experience-ranchu-qemu-arm64.tar.gz" .
           (cd "$RUNNER_TEMP" && sha256sum experience-ranchu-qemu-arm64.tar.gz > experience-ranchu-qemu-arm64.tar.gz.sha256)
 
