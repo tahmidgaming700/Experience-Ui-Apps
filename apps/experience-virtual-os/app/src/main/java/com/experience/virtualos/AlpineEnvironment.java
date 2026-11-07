@@ -143,7 +143,8 @@ public final class AlpineEnvironment {
                 if (!target.toFile().isDirectory() && !target.toFile().mkdirs()) {
                     throw new IOException("Cannot create Alpine directory " + relative);
                 }
-                applyMode(target.toFile(), mode);
+                // Do not chmod directories during extraction: a read-only directory
+                // could prevent later archive entries from being created beneath it.
                 entries++;
             } else if (type == '2') {
                 skipFully(in, padded(size));
