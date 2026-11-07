@@ -48,7 +48,17 @@ public final class AlpineEnvironment {
         }
 
         long entries = 0;
-        try (InputStream raw = context.getAssets().open(ASSET);
+        InputStream assetStream;
+        try {
+            assetStream = context.getAssets().open(ASSET);
+        } catch (IOException openError) {
+            String[] available;
+            try { available = context.getAssets().list("alpine"); }
+            catch (IOException ignored) { available = new String[0]; }
+            throw new IOException("Bundled Alpine asset is missing or unreadable: " + ASSET
+                    + ". Assets found in alpine/: " + java.util.Arrays.toString(available), openError);
+        }
+        try (InputStream raw = assetStream;
              GZIPInputStream gzip = new GZIPInputStream(new BufferedInputStream(raw, 65536))) {
             entries = extractTar(gzip, base.toPath());
         } catch (IOException e) {
