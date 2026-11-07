@@ -104,25 +104,28 @@ jobs:
           file apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot.so
           file apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
 
-      - name: Retrieve latest successful Android Ranchu ARM64 engine
-        id: ranchu
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Download and verify prebuilt Google ARM64 kernel-qemu
         run: |
           set -euo pipefail
-          RUN_ID="$(gh run list --workflow build-ranchu-engine.yml --branch feat/experience-virtual-os-rootless --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
-          if [ -z "$RUN_ID" ]; then
-            echo "No successful Ranchu engine build is available yet; the app will retain its Alpine QEMU fallback."
-            exit 0
-          fi
-          mkdir -p /tmp/ranchu-artifact
-          gh run download "$RUN_ID" --name experience-ranchu-qemu-arm64 --dir /tmp/ranchu-artifact
-          cd /tmp/ranchu-artifact
-          sha256sum -c experience-ranchu-qemu-arm64.tar.gz.sha256
-          mkdir -p "$GITHUB_WORKSPACE/apps/experience-virtual-os/app/src/main/assets"
-          cp experience-ranchu-qemu-arm64.tar.gz "$GITHUB_WORKSPACE/apps/experience-virtual-os/app/src/main/assets/ranchu-engine.tar.gz"
-          echo "Ranchu ARM64 engine bundled from workflow run $RUN_ID"
+          URL="https://android.googlesource.com/platform/prebuilts/qemu-kernel/+/brillo-m7-mr-dev/arm64/kernel-qemu?format=TEXT"
+          mkdir -p apps/experience-virtual-os/app/src/main/assets/kernel
+          curl --retry 5 --retry-all-errors --retry-delay 3 -fsSL "$URL" -o "$RUNNER_TEMP/kernel-qemu.base64"
+          base64 --decode "$RUNNER_TEMP/kernel-qemu.base64" > apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          path = Path("apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu")
+          data = path.read_bytes()
+          expected_size = 6157664
+          expected_git_blob = "6c2586739fab700a48c3440732c80262fc7875bd"
+          actual_git_blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\\0" + data).hexdigest()
+          if len(data) != expected_size:
+              raise SystemExit(f"Unexpected kernel size: {len(data)} bytes")
+          if actual_git_blob != expected_git_blob:
+              raise SystemExit(f"Git blob verification failed: {actual_git_blob}")
+          print(f"Verified Google ARM64 kernel-qemu: {len(data)} bytes, Git blob {actual_git_blob}")
+          PY
+          file apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu
 
       - name: Prepare release signing key
         id: signing
