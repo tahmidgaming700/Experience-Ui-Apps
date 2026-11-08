@@ -172,8 +172,8 @@ public final class MainActivity extends Activity {
         if (wizardStep == 0) {
             base("WELCOME", "A second Android. Your way.", "Set up your private guest environment. Your Huawei system stays installed and untouched.");
             LinearLayout c = card();
-            c.addView(label("01  LANGUAGE", 12, 0xFF9DBBFF, true));
-            c.addView(label("Choose the language for Experience Virtual OS.", 15, 0xFFE8EEF8, false));
+            c.addView(label("01  LANGUAGE", 12, 0xFF6750A4, true));
+            c.addView(label("Choose the language for Experience Virtual OS.", 15, 0xFF514568, false));
             Spinner languages = spinner(new String[]{"English", "বাংলা", "العربية", "Español", "Français"}, 0);
             button("Continue", () -> {
                 selectedLanguage = languages.getSelectedItem().toString();
@@ -183,20 +183,20 @@ public final class MainActivity extends Activity {
         } else if (wizardStep == 1) {
             base("YOUR ENVIRONMENT", "Configure your OS", "Choose the Android release and resources for your private virtual device.");
             LinearLayout c = card();
-            c.addView(label("02  ANDROID VERSION", 12, 0xFF9DBBFF, true));
-            c.addView(label("Android guest releases", 17, 0xFFF5F7FC, true));
-            c.addView(label("Android 17 is API 37. Experience Virtual OS uses Google's SDK package manager to resolve and install available platform and ARM64 guest-image packages.", 13, 0xFFB8C4D8, false));
+            c.addView(label("02  ANDROID VERSION", 12, 0xFF6750A4, true));
+            c.addView(label("Android guest releases", 17, 0xFF211B2B, true));
+            c.addView(label("Android 17 is API 37. Experience Virtual OS uses Google's SDK package manager to resolve and install available platform and ARM64 guest-image packages.", 13, 0xFF625B71, false));
             Spinner versions = spinner(API_LEVELS, selectedApi);
             LinearLayout memory = card();
-            memory.addView(label("MEMORY ALLOCATION", 12, 0xFF9DBBFF, true));
+            memory.addView(label("MEMORY ALLOCATION", 12, 0xFF6750A4, true));
             Spinner ram = spinner(new String[]{"512 MB", "1 GB", "1.5 GB", "2 GB"}, 1);
             Switch root = new Switch(this);
             root.setText("Enable root inside guest OS (image permitting)");
-            root.setTextColor(0xFFE8EEF8);
+            root.setTextColor(0xFF514568);
             root.setChecked(guestRoot);
             LinearLayout rootCard = card();
             rootCard.addView(root);
-            rootCard.addView(label("This setting is for the virtual Android only. It never grants root to Huawei/host Android. Google Play images may not support guest root.", 13, 0xFFB8C4D8, false));
+            rootCard.addView(label("This setting is for the virtual Android only. It never grants root to Huawei/host Android. Google Play images may not support guest root.", 13, 0xFF625B71, false));
             button("Continue", () -> {
                 selectedApi = versions.getSelectedItemPosition();
                 String r = ram.getSelectedItem().toString();
@@ -209,14 +209,14 @@ public final class MainActivity extends Activity {
         } else {
             base("READY TO BEGIN", "Your virtual device is configured.", "Experience Virtual OS will now prepare its private system environment. Your phone Android remains unchanged.");
             LinearLayout c = card();
-            c.addView(label("DEVICE", 12, 0xFF9DBBFF, true));
-            c.addView(label(android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL, 18, 0xFFF5F7FC, true));
+            c.addView(label("DEVICE", 12, 0xFF6750A4, true));
+            c.addView(label(android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL, 18, 0xFF211B2B, true));
             c.addView(label("Android " + android.os.Build.VERSION.RELEASE + " • API " + android.os.Build.VERSION.SDK_INT
-                    + " • " + (isArm64() ? "ARM64" : android.os.Build.CPU_ABI), 13, 0xFFB8C4D8, false));
+                    + " • " + (isArm64() ? "ARM64" : android.os.Build.CPU_ABI), 13, 0xFF625B71, false));
             LinearLayout cfg = card();
-            cfg.addView(label("GUEST CONFIGURATION", 12, 0xFF9DBBFF, true));
-            cfg.addView(label(API_LEVELS[selectedApi] + " • " + selectedMemory + " MB RAM", 16, 0xFFF5F7FC, true));
-            cfg.addView(label("Guest root: " + (guestRoot ? "requested if supported by image" : "off"), 13, 0xFFB8C4D8, false));
+            cfg.addView(label("GUEST CONFIGURATION", 12, 0xFF6750A4, true));
+            cfg.addView(label(API_LEVELS[selectedApi] + " • " + selectedMemory + " MB RAM", 16, 0xFF211B2B, true));
+            cfg.addView(label("Guest root: " + (guestRoot ? "requested if supported by image" : "off"), 13, 0xFF625B71, false));
             button("Finish setup", () -> {
                 prefs.edit().putBoolean("setup_complete", true)
                         .putString("language", selectedLanguage).putInt("api", selectedApi)
@@ -235,13 +235,13 @@ public final class MainActivity extends Activity {
     private void showHome() {
         base("YOUR ENVIRONMENTS", "Virtual OS", "A separate Android workspace, managed from one place.");
         LinearLayout status = card();
-        status.addView(label("ROOTLESS HOST", 12, 0xFF9DBBFF, true));
-        status.addView(label("Huawei Android remains untouched", 18, 0xFFF5F7FC, true));
-        status.addView(label("No host root, bootloader unlock or system partition access is requested.", 14, 0xFFB8C4D8, false));
+        status.addView(label("ROOTLESS HOST", 12, 0xFF6750A4, true));
+        status.addView(label("Huawei Android remains untouched", 18, 0xFF211B2B, true));
+        status.addView(label("No host root, bootloader unlock or system partition access is requested.", 14, 0xFF625B71, false));
         LinearLayout foundation = card();
         foundation.addView(label("ALPINE SYSTEM FOUNDATION", 12, 0xFF6750A4, true));
-        foundation.addView(label(AlpineEnvironment.isInstalled(this) ? "Base environment prepared" : "Base environment not prepared", 19, 0xFFF5F7FC, true));
-        foundation.addView(label("Private system components are stored inside Experience Virtual OS. They do not modify your phone or require root.", 13, 0xFFB8C4D8, false));
+        foundation.addView(label(AlpineEnvironment.isInstalled(this) ? "Base environment prepared" : "Base environment not prepared", 19, 0xFF211B2B, true));
+        foundation.addView(label("Private system components are stored inside Experience Virtual OS. They do not modify your phone or require root.", 13, 0xFF625B71, false));
         if (!AlpineEnvironment.isInstalled(this)) {
             cardButton(foundation, "Install Alpine + QEMU runtime", this::installGuestEngine);
         } else {
@@ -251,12 +251,12 @@ public final class MainActivity extends Activity {
         }
 
         LinearLayout updates = card();
-        updates.addView(label("SOFTWARE UPDATES", 12, 0xFF9DBBFF, true));
-        updates.addView(label("Experience Virtual OS", 19, 0xFFF5F7FC, true));
+        updates.addView(label("SOFTWARE UPDATES", 12, 0xFF6750A4, true));
+        updates.addView(label("Experience Virtual OS", 19, 0xFF211B2B, true));
         String installedVersion = getVersionName();
-        updates.addView(label("Installed version  •  " + installedVersion, 13, 0xFFB8C4D8, false));
-        updateState = label("Check GitHub for the latest published release.", 14, 0xFFE8EEF8, false);
-        updateNotes = label("", 12, 0xFFB8C4D8, false);
+        updates.addView(label("Installed version  •  " + installedVersion, 13, 0xFF625B71, false));
+        updateState = label("Check GitHub for the latest published release.", 14, 0xFF514568, false);
+        updateNotes = label("", 12, 0xFF625B71, false);
         updates.addView(updateState);
         updates.addView(updateNotes);
         cardButton(updates, "Check for updates", this::checkForUpdates);
@@ -265,13 +265,13 @@ public final class MainActivity extends Activity {
         cardButton(updates, "View GitHub releases", this::openReleases);
 
         LinearLayout config = card();
-        config.addView(label("CURRENT GUEST PROFILE", 12, 0xFF9DBBFF, true));
-        config.addView(label(API_LEVELS[prefs.getInt("api", 0)] + " • " + prefs.getInt("memory", 1024) + " MB", 17, 0xFFF5F7FC, true));
-        config.addView(label("Guest root: " + (prefs.getBoolean("guest_root", false) ? "requested (image-dependent)" : "off"), 13, 0xFFB8C4D8, false));
+        config.addView(label("CURRENT GUEST PROFILE", 12, 0xFF6750A4, true));
+        config.addView(label(API_LEVELS[prefs.getInt("api", 0)] + " • " + prefs.getInt("memory", 1024) + " MB", 17, 0xFF211B2B, true));
+        config.addView(label("Guest root: " + (prefs.getBoolean("guest_root", false) ? "requested (image-dependent)" : "off"), 13, 0xFF625B71, false));
         LinearLayout sources = card();
-        sources.addView(label("ANDROID SYSTEM LIBRARY", 12, 0xFF9DBBFF, true));
-        sources.addView(label("Android guest releases • API 28–37", 18, 0xFFF5F7FC, true));
-        sources.addView(label("The private SDK Manager can install selected Android platform and ARM64 guest-image packages. The virtual machine engine and interactive guest display are the next integration stages.", 13, 0xFFB8C4D8, false));
+        sources.addView(label("ANDROID SYSTEM LIBRARY", 12, 0xFF6750A4, true));
+        sources.addView(label("Android guest releases • API 28–37", 18, 0xFF211B2B, true));
+        sources.addView(label("The private SDK Manager can install selected Android platform and ARM64 guest-image packages. The virtual machine engine and interactive guest display are the next integration stages.", 13, 0xFF625B71, false));
         cardButton(sources, "Install selected Android SDK + system image", this::installSdkManager);
         cardButton(sources, "Install virtual machine engine", this::installGuestEngine);
         cardButton(sources, "Start Android guest", this::startAndroidGuest);
@@ -281,7 +281,7 @@ public final class MainActivity extends Activity {
             Toast.makeText(this, "Android guest stopped.", Toast.LENGTH_SHORT).show();
         });
         cardButton(sources, "View guest runtime log", this::showGuestLog);
-        sources.addView(label("The private SDK Manager installs the selected Android platform and ARM64 Google APIs system image. The guest engine, framebuffer and touch controls are managed separately.", 12, 0xFFB8C4D8, false));
+        sources.addView(label("The private SDK Manager installs the selected Android platform and ARM64 Google APIs system image. The guest engine, framebuffer and touch controls are managed separately.", 12, 0xFF625B71, false));
         button("Import another guest image", this::chooseImage);
         button("Change guest configuration", () -> {
             selectedApi = prefs.getInt("api", 0);
@@ -291,19 +291,19 @@ public final class MainActivity extends Activity {
             renderWizard();
         });
         LinearLayout runtime = card();
-        runtime.addView(label("DEVICE COMPATIBILITY", 12, 0xFF9DBBFF, true));
+        runtime.addView(label("DEVICE COMPATIBILITY", 12, 0xFF6750A4, true));
         RuntimeCapabilities capabilities = RuntimeCapabilities.inspect(this);
-        runtime.addView(label(capabilities.deviceSummary(), 15, 0xFFF5F7FC, true));
-        runtime.addView(label(capabilities.accelerationSummary(), 13, 0xFFB8C4D8, false));
-        runtime.addView(label("These are host checks only. A visible KVM node does not prove that a compatible guest machine can boot. Experience Virtual OS will not request root or change your bootloader.", 12, 0xFFFFD18A, false));
-        runtime.addView(label("VIRTUAL MACHINE STATUS", 12, 0xFF9DBBFF, true));
-        runtime.addView(label(GuestVmManager.isRunning() ? "Android guest process running" : "Android guest process stopped", 17, 0xFFFFD18A, true));
-        runtime.addView(label("The guest launcher starts the Android Emulator engine when bundled and connects its localhost VNC framebuffer to the in-app touch display. Actual Android boot compatibility is reported by the guest serial and QEMU logs.", 13, 0xFFB8C4D8, false));
+        runtime.addView(label(capabilities.deviceSummary(), 15, 0xFF211B2B, true));
+        runtime.addView(label(capabilities.accelerationSummary(), 13, 0xFF625B71, false));
+        runtime.addView(label("These are host checks only. A visible KVM node does not prove that a compatible guest machine can boot. Experience Virtual OS will not request root or change your bootloader.", 12, 0xFF8C4A00, false));
+        runtime.addView(label("VIRTUAL MACHINE STATUS", 12, 0xFF6750A4, true));
+        runtime.addView(label(GuestVmManager.isRunning() ? "Android guest process running" : "Android guest process stopped", 17, 0xFF8C4A00, true));
+        runtime.addView(label("The guest launcher starts the Android Emulator engine when bundled and connects its localhost VNC framebuffer to the in-app touch display. Actual Android boot compatibility is reported by the guest serial and QEMU logs.", 13, 0xFF625B71, false));
         button("Restart setup wizard", () -> {
             prefs.edit().putBoolean("setup_complete", false).apply();
             showWizard();
         });
-        page.addView(label("Experience Virtual OS • alpha", 12, 0xFF7F8CA2, false));
+        page.addView(label("Experience Virtual OS • alpha", 12, 0xFF79747E, false));
     }
 
 
@@ -408,7 +408,7 @@ public final class MainActivity extends Activity {
     private void showRuntimeProgress(String heading, String initial, Runnable task) {
         base("VIRTUAL DEVICE RUNTIME", heading, "The runtime is managed privately. No shell or terminal is exposed.");
         LinearLayout panel = card();
-        TextView stage = label(initial, 16, 0xFFF5F7FC, true);
+        TextView stage = label(initial, 16, 0xFF211B2B, true);
         panel.addView(stage);
         ProgressBar progress = new ProgressBar(this);
         progress.setIndeterminate(true);
@@ -435,8 +435,8 @@ public final class MainActivity extends Activity {
     private void beginSdkManagerInstall() {
         base("ANDROID SDK INSTALLER", "Installing Android SDK", "Experience Virtual OS is preparing the selected Android platform and ARM64 system image. No terminal will be shown.");
         LinearLayout panel = card();
-        panel.addView(label("INSTALLATION PROGRESS", 12, 0xFF9DBBFF, true));
-        TextView stage = label("Preparing private environment…", 17, 0xFFF5F7FC, true);
+        panel.addView(label("INSTALLATION PROGRESS", 12, 0xFF6750A4, true));
+        TextView stage = label("Preparing private environment…", 17, 0xFF211B2B, true);
         panel.addView(stage);
         ProgressBar progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
@@ -444,7 +444,7 @@ public final class MainActivity extends Activity {
         pp.topMargin = dp(16);
         pp.bottomMargin = dp(12);
         panel.addView(progress, pp);
-        TextView details = label("The SDK packages are installed into app-private storage.", 13, 0xFFB8C4D8, false);
+        TextView details = label("The SDK packages are installed into app-private storage.", 13, 0xFF625B71, false);
         panel.addView(details);
         new Thread(() -> {
             try {
@@ -473,8 +473,8 @@ public final class MainActivity extends Activity {
     private void beginEnvironmentSetup() {
         base("EXPERIENCE VIRTUAL OS SETUP", "Preparing your virtual device", "Please keep Experience Virtual OS open while the private system foundation is prepared.");
         LinearLayout panel = card();
-        panel.addView(label("INSTALLATION", 12, 0xFF9DBBFF, true));
-        TextView stage = label("Preparing system components…", 17, 0xFFF5F7FC, true);
+        panel.addView(label("INSTALLATION", 12, 0xFF6750A4, true));
+        TextView stage = label("Preparing system components…", 17, 0xFF211B2B, true);
         panel.addView(stage);
         ProgressBar progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
@@ -482,7 +482,7 @@ public final class MainActivity extends Activity {
         pp.topMargin = dp(18);
         pp.bottomMargin = dp(12);
         panel.addView(progress, pp);
-        TextView detail = label("Verifying the private environment. No host system changes are made.", 13, 0xFFB8C4D8, false);
+        TextView detail = label("Verifying the private environment. No host system changes are made.", 13, 0xFF625B71, false);
         panel.addView(detail);
         new Thread(() -> {
             try {
