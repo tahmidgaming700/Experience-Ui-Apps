@@ -3,6 +3,7 @@ package com.experience.virtualos;
 import android.content.Context;
 import android.system.Os;
 import android.system.ErrnoException;
+import android.system.OsConstants;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -163,10 +164,16 @@ public final class AlpineEnvironment {
                 skipFully(in, padded(size));
                 ensureParent(target);
                 try {
-                    // NOFOLLOW_LINKS also detects dangling symlinks. Files.exists() alone follows
-                    // the link and reports false for a dangling target, causing EEXIST on retry.
-                    if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) Os.symlink(link, target.toString());
-                } catch (ErrnoException | UnsupportedOperationException e) {
+                    // usr/bin may resolve through an earlier usr -> /usr or bin directory alias.
+                    // In that case the archive can name the same destination twice. Treat EEXIST
+                    // as an already-extracted entry; never replace an existing filesystem object.
+                    Os.symlink(link, target.toString());
+                } catch (ErrnoException e) {
+                    if (e.errno != OsConstants.EEXIST) {
+                        throw new IOException("Cannot create Alpine symlink " + relative + " -> " + link
+                                + ": " + e.getMessage(), e);
+                    }
+                } catch (UnsupportedOperationException e) {
                     throw new IOException("Cannot create Alpine symlink " + relative + " -> " + link
                             + ": " + e.getMessage(), e);
                 }
