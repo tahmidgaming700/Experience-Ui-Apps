@@ -20,9 +20,11 @@ public final class GuestVmManager {
         if (!AlpineEnvironment.isInstalled(context)) AlpineEnvironment.installFromAssets(context);
         AlpineRuntime.run(context,
                 "printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n' > /etc/resolv.conf "
-                + "&& apk update && apk add --no-cache qemu-system-aarch64 qemu-img");
-        String version = AlpineRuntime.run(context, "qemu-system-aarch64 --version");
-        if (!version.contains("QEMU")) throw new IOException("ARM64 QEMU executable verification failed.");
+                + "&& apk update && apk add --no-cache qemu-system-aarch64 qemu-system-x86_64 qemu-img");
+        String version = AlpineRuntime.run(context,
+                "qemu-system-aarch64 --version && qemu-system-x86_64 --version && qemu-img --version");
+        if (!version.contains("QEMU")) throw new IOException("QEMU executable verification failed.");
+        if (!version.contains("qemu-img")) throw new IOException("QEMU disk utility verification failed.");
     }
 
     public static synchronized void start(Context context, int api, int memoryMb) throws Exception {
