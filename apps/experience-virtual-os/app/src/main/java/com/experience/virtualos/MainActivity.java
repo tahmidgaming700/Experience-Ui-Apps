@@ -37,6 +37,7 @@ import android.widget.Toast;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 public final class MainActivity extends Activity {
     private static final String PREFS = "experience_virtual_os";
@@ -47,6 +48,7 @@ public final class MainActivity extends Activity {
 
     private SharedPreferences prefs;
     private LinearLayout page;
+    private LinearLayout root;
     private int wizardStep;
     private String selectedLanguage = "English";
     private int selectedApi = 0;
@@ -112,7 +114,11 @@ public final class MainActivity extends Activity {
         sp.bottomMargin = dp(20);
         page.addView(sub, sp);
         scroll.addView(page);
-        setContentView(scroll);
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(0xFFF7F2FA);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        setContentView(root);
     }
 
     private LinearLayout card() {
@@ -233,79 +239,151 @@ public final class MainActivity extends Activity {
     }
 
     private void showHome() {
-        base("YOUR ENVIRONMENTS", "Virtual OS", "A separate Android workspace, managed from one place.");
-        LinearLayout status = card();
-        status.addView(label("ROOTLESS HOST", 12, 0xFF6750A4, true));
-        status.addView(label("Huawei Android remains untouched", 18, 0xFF211B2B, true));
-        status.addView(label("No host root, bootloader unlock or system partition access is requested.", 14, 0xFF625B71, false));
-        LinearLayout foundation = card();
-        foundation.addView(label("ALPINE SYSTEM FOUNDATION", 12, 0xFF6750A4, true));
-        foundation.addView(label(AlpineEnvironment.isInstalled(this) ? "Base environment prepared" : "Base environment not prepared", 19, 0xFF211B2B, true));
-        foundation.addView(label("Private system components are stored inside Experience Virtual OS. They do not modify your phone or require root.", 13, 0xFF625B71, false));
-        if (!AlpineEnvironment.isInstalled(this)) {
-            cardButton(foundation, "Install Alpine + QEMU runtime", this::installGuestEngine);
-        } else {
-            foundation.addView(label("Alpine is installed in private app storage. QEMU runtime setup and guest-image compatibility are separate steps.", 12, 0xFF6750A4, false));
-            cardButton(foundation, "Update Alpine packages", this::updateAlpinePackages);
-            cardButton(foundation, "Re-run first-time preparation", this::beginEnvironmentSetup);
-        }
+        base("VIRTUAL MACHINE LIBRARY", "Your virtual machines", "Create, organise and run guest systems from your phone.");
+        LinearLayout overview = card();
+        overview.addView(label("DEVICE STATUS", 12, 0xFF6750A4, true));
+        overview.addView(label(android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL, 20, 0xFF211B2B, true));
+        overview.addView(label("Android " + android.os.Build.VERSION.RELEASE + "  •  " +
+                (isArm64() ? "ARM64 host" : android.os.Build.CPU_ABI) + "  •  Rootless mode", 13, 0xFF625B71, false));
 
-        LinearLayout updates = card();
-        updates.addView(label("SOFTWARE UPDATES", 12, 0xFF6750A4, true));
-        updates.addView(label("Experience Virtual OS", 19, 0xFF211B2B, true));
-        String installedVersion = getVersionName();
-        updates.addView(label("Installed version  •  " + installedVersion, 13, 0xFF625B71, false));
-        updateState = label("Check GitHub for the latest published release.", 14, 0xFF514568, false);
-        updateNotes = label("", 12, 0xFF625B71, false);
-        updates.addView(updateState);
-        updates.addView(updateNotes);
-        cardButton(updates, "Check for updates", this::checkForUpdates);
-        cardButton(updates, "Download available update", this::downloadUpdate);
-        cardButton(updates, "Install downloaded update", this::installDownloadedUpdate);
-        cardButton(updates, "View GitHub releases", this::openReleases);
-
-        LinearLayout config = card();
-        config.addView(label("CURRENT GUEST PROFILE", 12, 0xFF6750A4, true));
-        config.addView(label(API_LEVELS[prefs.getInt("api", 0)] + " • " + prefs.getInt("memory", 1024) + " MB", 17, 0xFF211B2B, true));
-        config.addView(label("Guest root: " + (prefs.getBoolean("guest_root", false) ? "requested (image-dependent)" : "off"), 13, 0xFF625B71, false));
-        LinearLayout sources = card();
-        sources.addView(label("ANDROID SYSTEM LIBRARY", 12, 0xFF6750A4, true));
-        sources.addView(label("Android guest releases • API 28–37", 18, 0xFF211B2B, true));
-        sources.addView(label("The private SDK Manager can install selected Android platform and ARM64 guest-image packages. The virtual machine engine and interactive guest display are the next integration stages.", 13, 0xFF625B71, false));
-        cardButton(sources, "Install selected Android SDK + system image", this::installSdkManager);
-        cardButton(sources, "Install virtual machine engine", this::installGuestEngine);
-        cardButton(sources, "Start Android guest", this::startAndroidGuest);
-        cardButton(sources, "Open live guest display", this::openGuestDisplay);
-        cardButton(sources, "Stop Android guest", () -> {
-            GuestVmManager.stop();
-            Toast.makeText(this, "Android guest stopped.", Toast.LENGTH_SHORT).show();
-        });
-        cardButton(sources, "View guest runtime log", this::showGuestLog);
-        sources.addView(label("The private SDK Manager installs the selected Android platform and ARM64 Google APIs system image. The guest engine, framebuffer and touch controls are managed separately.", 12, 0xFF625B71, false));
-        button("Import another guest image", this::chooseImage);
-        button("Change guest configuration", () -> {
+        LinearLayout vm = card();
+        vm.addView(label("ANDROID VIRTUAL DEVICE", 12, 0xFF6750A4, true));
+        vm.addView(label(API_LEVELS[Math.max(0, Math.min(API_LEVELS.length - 1, prefs.getInt("api", 0)))]
+                + "  •  " + prefs.getInt("memory", 1024) + " MB RAM", 18, 0xFF211B2B, true));
+        vm.addView(label(GuestVmManager.isRunning() ? "Running • guest process active" : "Stopped • ready when its runtime and image are installed",
+                13, 0xFF625B71, false));
+        cardButton(vm, "Start virtual machine", this::startAndroidGuest);
+        cardButton(vm, "Open guest display", this::openGuestDisplay);
+        cardButton(vm, "Configure Android guest", () -> {
             selectedApi = prefs.getInt("api", 0);
             selectedMemory = prefs.getInt("memory", 1024);
             guestRoot = prefs.getBoolean("guest_root", false);
             wizardStep = 1;
             renderWizard();
         });
-        LinearLayout runtime = card();
-        runtime.addView(label("DEVICE COMPATIBILITY", 12, 0xFF6750A4, true));
+
+        LinearLayout alpine = card();
+        alpine.addView(label("ALPINE LINUX RUNTIME", 12, 0xFF6750A4, true));
+        alpine.addView(label(AlpineEnvironment.isInstalled(this) ? "Alpine base system installed" : "Alpine setup required",
+                18, 0xFF211B2B, true));
+        alpine.addView(label("Private Alpine ARM64 userspace • PRoot • QEMU • no host root", 13, 0xFF625B71, false));
+        cardButton(alpine, "Set up Alpine + QEMU engines", this::installGuestEngine);
+        cardButton(alpine, "Alpine package maintenance", this::updateAlpinePackages);
+
+        LinearLayout library = card();
+        library.addView(label("IMAGE LIBRARY", 12, 0xFF6750A4, true));
+        String selected = prefs.getString("imported_image", "");
+        library.addView(label(selected.isEmpty() ? "No external image selected" : "An image reference is saved",
+                17, 0xFF211B2B, true));
+        library.addView(label("Import disk images and installation media from Android Files.", 13, 0xFF625B71, false));
+        cardButton(library, "Open image library", () -> showLibrary());
+
+        addNavigation(1);
+    }
+
+    private void addNavigation(int selectedId) {
+        if (root == null) return;
+        BottomNavigationView navigation = new BottomNavigationView(this);
+        navigation.setBackgroundColor(0xFFFFFBFF);
+        navigation.getMenu().add(0, 1, 0, "Home").setIcon(android.R.drawable.ic_menu_view);
+        navigation.getMenu().add(0, 2, 1, "Library").setIcon(android.R.drawable.ic_menu_agenda);
+        navigation.getMenu().add(0, 3, 2, "Tools").setIcon(android.R.drawable.ic_menu_manage);
+        navigation.getMenu().add(0, 4, 3, "Settings").setIcon(android.R.drawable.ic_menu_preferences);
+        navigation.setSelectedItemId(selectedId);
+        navigation.setOnItemSelectedListener(item -> {
+            if (item.getItemId() == 1) showHome();
+            else if (item.getItemId() == 2) showLibrary();
+            else if (item.getItemId() == 3) showTools();
+            else if (item.getItemId() == 4) showSettings();
+            return true;
+        });
+        root.addView(navigation, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void showLibrary() {
+        base("IMAGE AND SYSTEM LIBRARY", "Your library", "Manage imported media and Android guest packages.");
+        LinearLayout images = card();
+        images.addView(label("IMPORTED IMAGES", 12, 0xFF6750A4, true));
+        String uri = prefs.getString("imported_image", "");
+        images.addView(label(uri.isEmpty() ? "No image imported yet" : uri, 14, 0xFF211B2B, false));
+        cardButton(images, "Import disk image or ISO", this::chooseImage);
+        if (!uri.isEmpty()) cardButton(images, "Forget imported image reference", () -> {
+            prefs.edit().remove("imported_image").apply();
+            showLibrary();
+        });
+
+        LinearLayout android = card();
+        android.addView(label("ANDROID SYSTEM IMAGES", 12, 0xFF6750A4, true));
+        int api = 28 + prefs.getInt("api", 0);
+        File imageDir = new File(SdkManagerBootstrap.sdkRoot(this),
+                "system-images/android-" + api + "/google_apis/arm64-v8a");
+        android.addView(label("Android API " + api, 18, 0xFF211B2B, true));
+        android.addView(label(imageDir.isDirectory() ? "System-image directory found" : "System image not installed",
+                13, 0xFF625B71, false));
+        cardButton(android, "Install selected Android system image", this::installSdkManager);
+        addNavigation(2);
+    }
+
+    private void showTools() {
+        base("RUNTIME AND UTILITIES", "Tools", "Manage the private Linux foundation and virtual-machine engine.");
+        LinearLayout alpine = card();
+        alpine.addView(label("ALPINE LINUX", 12, 0xFF6750A4, true));
+        alpine.addView(label(AlpineEnvironment.isInstalled(this) ? "Installed in app-private storage" : "Not installed",
+                18, 0xFF211B2B, true));
+        cardButton(alpine, "Install / repair Alpine and QEMU", this::installGuestEngine);
+        cardButton(alpine, "Update Alpine packages", this::updateAlpinePackages);
+
+        LinearLayout sdk = card();
+        sdk.addView(label("ANDROID SDK MANAGER", 12, 0xFF6750A4, true));
+        sdk.addView(label("Install platform tools and the selected ARM64 system image.", 14, 0xFF625B71, false));
+        cardButton(sdk, "Install Android SDK + system image", this::installSdkManager);
+
+        LinearLayout diagnostics = card();
+        diagnostics.addView(label("DIAGNOSTICS", 12, 0xFF6750A4, true));
+        cardButton(diagnostics, "View QEMU runtime log", this::showGuestLog);
+        cardButton(diagnostics, "Stop virtual machine", () -> {
+            GuestVmManager.stop();
+            Toast.makeText(this, "Virtual machine stopped.", Toast.LENGTH_SHORT).show();
+            showTools();
+        });
+        addNavigation(3);
+    }
+
+    private void showSettings() {
+        base("PREFERENCES AND DEVICE INFORMATION", "Settings", "Configure the guest and inspect host compatibility.");
+        LinearLayout profile = card();
+        profile.addView(label("GUEST PROFILE", 12, 0xFF6750A4, true));
+        profile.addView(label(API_LEVELS[Math.max(0, Math.min(API_LEVELS.length - 1, prefs.getInt("api", 0)))]
+                + "  •  " + prefs.getInt("memory", 1024) + " MB RAM", 17, 0xFF211B2B, true));
+        profile.addView(label("Guest root: " + (prefs.getBoolean("guest_root", false) ? "requested if supported" : "off"),
+                13, 0xFF625B71, false));
+        cardButton(profile, "Change guest configuration", () -> {
+            selectedApi = prefs.getInt("api", 0);
+            selectedMemory = prefs.getInt("memory", 1024);
+            guestRoot = prefs.getBoolean("guest_root", false);
+            wizardStep = 1;
+            renderWizard();
+        });
+
+        LinearLayout host = card();
+        host.addView(label("HOST COMPATIBILITY", 12, 0xFF6750A4, true));
         RuntimeCapabilities capabilities = RuntimeCapabilities.inspect(this);
-        runtime.addView(label(capabilities.deviceSummary(), 15, 0xFF211B2B, true));
-        runtime.addView(label(capabilities.accelerationSummary(), 13, 0xFF625B71, false));
-        runtime.addView(label("These are host checks only. A visible KVM node does not prove that a compatible guest machine can boot. Experience Virtual OS will not request root or change your bootloader.", 12, 0xFF8C4A00, false));
-        runtime.addView(label("VIRTUAL MACHINE STATUS", 12, 0xFF6750A4, true));
-        runtime.addView(label(GuestVmManager.isRunning() ? "Android guest process running" : "Android guest process stopped", 17, 0xFF8C4A00, true));
-        runtime.addView(label("The guest launcher starts the Android Emulator engine when bundled and connects its localhost VNC framebuffer to the in-app touch display. Actual Android boot compatibility is reported by the guest serial and QEMU logs.", 13, 0xFF625B71, false));
-        button("Restart setup wizard", () -> {
+        host.addView(label(capabilities.deviceSummary(), 15, 0xFF211B2B, true));
+        host.addView(label(capabilities.accelerationSummary(), 13, 0xFF625B71, false));
+        host.addView(label("KVM visibility is diagnostic only. No host root or bootloader modification is requested.",
+                12, 0xFF8C4A00, false));
+
+        LinearLayout updates = card();
+        updates.addView(label("EXPERIENCE VIRTUAL OS", 12, 0xFF6750A4, true));
+        updates.addView(label("Version " + getVersionName(), 14, 0xFF625B71, false));
+        cardButton(updates, "Check for updates", this::checkForUpdates);
+        cardButton(updates, "View GitHub releases", this::openReleases);
+        cardButton(updates, "Restart setup wizard", () -> {
             prefs.edit().putBoolean("setup_complete", false).apply();
             showWizard();
         });
-        page.addView(label("Experience Virtual OS • alpha", 12, 0xFF79747E, false));
+        addNavigation(4);
     }
-
 
     private Button cardButton(LinearLayout parent, String text, Runnable action) {
         MaterialButton b = new MaterialButton(this, null,
