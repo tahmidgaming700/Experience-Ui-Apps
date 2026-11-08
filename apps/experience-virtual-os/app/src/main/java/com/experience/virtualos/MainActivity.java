@@ -34,6 +34,9 @@ import android.widget.ArrayAdapter;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.appbar.MaterialToolbar;
 
 public final class MainActivity extends Activity {
     private static final String PREFS = "experience_virtual_os";
@@ -84,49 +87,66 @@ public final class MainActivity extends Activity {
     private void base(String eyebrow, String heading, String subtitle) {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(22), dp(30), dp(22), dp(28));
-        page.setBackgroundColor(0xFF0D1420);
-        page.addView(label("EXPERIENCE UI  /  VIRTUAL OS", 11, 0xFF9DBBFF, true));
-        TextView title = label(heading, 30, 0xFFF5F7FC, true);
+        page.setPadding(dp(20), dp(18), dp(20), dp(34));
+        page.setBackgroundColor(0xFFF7F2FA);
+
+        MaterialToolbar toolbar = new MaterialToolbar(this);
+        toolbar.setTitle("Experience Virtual OS");
+        toolbar.setTitleTextColor(0xFF292431);
+        toolbar.setSubtitle(eyebrow);
+        toolbar.setSubtitleTextColor(0xFF655B70);
+        toolbar.setBackgroundColor(0xFFF7F2FA);
+        toolbar.setElevation(0);
+        page.addView(toolbar, new LinearLayout.LayoutParams(-1, dp(64)));
+
+        TextView title = label(heading, 29, 0xFF211B2B, true);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-1, -2);
-        tp.topMargin = dp(14);
+        tp.topMargin = dp(18);
         page.addView(title, tp);
-        TextView sub = label(subtitle, 15, 0xFFB8C4D8, false);
+        TextView sub = label(subtitle, 15, 0xFF625B71, false);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
-        sp.topMargin = dp(8);
-        sp.bottomMargin = dp(22);
+        sp.topMargin = dp(7);
+        sp.bottomMargin = dp(20);
         page.addView(sub, sp);
         scroll.addView(page);
         setContentView(scroll);
     }
 
     private LinearLayout card() {
+        MaterialCardView shell = new MaterialCardView(this);
+        shell.setCardBackgroundColor(0xFFFFFBFF);
+        shell.setRadius(dp(26));
+        shell.setCardElevation(0);
+        shell.setStrokeWidth(dp(1));
+        shell.setStrokeColor(0xFFE9E1EE);
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setPadding(dp(17), dp(16), dp(17), dp(16));
-        c.setBackground(shape(0xFF192536, 22));
+        c.setPadding(dp(18), dp(17), dp(18), dp(17));
+        shell.addView(c);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
         p.bottomMargin = dp(13);
-        page.addView(c, p);
+        page.addView(shell, p);
         return c;
     }
-
     private void gap(LinearLayout parent, int height) {
         View v = new View(this);
         parent.addView(v, new LinearLayout.LayoutParams(1, dp(height)));
     }
 
     private Button button(String text, Runnable action) {
-        Button b = new Button(this);
+        MaterialButton b = new MaterialButton(this);
         b.setText(text);
-        b.setAllCaps(false);
         b.setTextSize(15);
-        b.setTextColor(0xFF101827);
-        b.setBackground(shape(0xFFB8CCFF, 18));
+        b.setCornerRadius(dp(18));
+        b.setInsetTop(0);
+        b.setInsetBottom(0);
+        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF6750A4));
+        b.setTextColor(0xFFFFFFFF);
         b.setOnClickListener(v -> action.run());
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(52));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(54));
         p.topMargin = dp(9);
         page.addView(b, p);
         return b;
@@ -219,13 +239,15 @@ public final class MainActivity extends Activity {
         status.addView(label("Huawei Android remains untouched", 18, 0xFFF5F7FC, true));
         status.addView(label("No host root, bootloader unlock or system partition access is requested.", 14, 0xFFB8C4D8, false));
         LinearLayout foundation = card();
-        foundation.addView(label("SYSTEM FOUNDATION", 12, 0xFF9DBBFF, true));
+        foundation.addView(label("ALPINE SYSTEM FOUNDATION", 12, 0xFF6750A4, true));
         foundation.addView(label(AlpineEnvironment.isInstalled(this) ? "Base environment prepared" : "Base environment not prepared", 19, 0xFFF5F7FC, true));
         foundation.addView(label("Private system components are stored inside Experience Virtual OS. They do not modify your phone or require root.", 13, 0xFFB8C4D8, false));
         if (!AlpineEnvironment.isInstalled(this)) {
-            cardButton(foundation, "Prepare system environment", this::beginEnvironmentSetup);
+            cardButton(foundation, "Install Alpine + QEMU runtime", this::installGuestEngine);
         } else {
-            foundation.addView(label("The base files are ready. Android virtual-machine runtime and guest image installation are still being integrated.", 12, 0xFFFFD18A, false));
+            foundation.addView(label("Alpine is installed in private app storage. QEMU runtime setup and guest-image compatibility are separate steps.", 12, 0xFF6750A4, false));
+            cardButton(foundation, "Update Alpine packages", this::updateAlpinePackages);
+            cardButton(foundation, "Re-run first-time preparation", this::beginEnvironmentSetup);
         }
 
         LinearLayout updates = card();
@@ -286,14 +308,17 @@ public final class MainActivity extends Activity {
 
 
     private Button cardButton(LinearLayout parent, String text, Runnable action) {
-        Button b = new Button(this);
+        MaterialButton b = new MaterialButton(this, null,
+                com.google.android.material.R.attr.materialButtonOutlinedStyle);
         b.setText(text);
-        b.setAllCaps(false);
         b.setTextSize(14);
-        b.setTextColor(0xFFE8EEF8);
-        b.setBackground(shape(0xFF26374D, 15));
+        b.setCornerRadius(dp(16));
+        b.setInsetTop(0);
+        b.setInsetBottom(0);
+        b.setStrokeColor(android.content.res.ColorStateList.valueOf(0xFFB8AFC4));
+        b.setTextColor(0xFF514568);
         b.setOnClickListener(v -> action.run());
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(46));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(48));
         p.topMargin = dp(8);
         parent.addView(b, p);
         return b;
@@ -314,6 +339,23 @@ public final class MainActivity extends Activity {
                 mainHandler.post(() -> { Toast.makeText(this, "Virtual machine engine installed.", Toast.LENGTH_LONG).show(); showHome(); });
             } catch (Exception e) {
                 mainHandler.post(() -> showRuntimeError("Engine installation failed", e));
+            }
+        });
+    }
+
+    private void updateAlpinePackages() {
+        showRuntimeProgress("Updating Alpine packages",
+                "Refreshing Alpine package indexes and applying available updates…", () -> {
+            try {
+                String release = AlpineRuntime.run(this,
+                        "apk update && apk upgrade --available && cat /etc/alpine-release");
+                mainHandler.post(() -> {
+                    new AlertDialog.Builder(this).setTitle("Alpine is up to date")
+                            .setMessage("Installed Alpine release: " + release.trim())
+                            .setPositiveButton("Done", (d, w) -> showHome()).show();
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> showRuntimeError("Alpine update failed", e));
             }
         });
     }
