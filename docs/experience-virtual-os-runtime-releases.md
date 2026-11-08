@@ -19,7 +19,7 @@ The tag workflow creates a GitHub Release containing:
 - `SHA256SUMS` — SHA-256 checksum for the archive.
 - `manifest.json` — machine-readable version, architecture, asset URL, exact byte size and checksum.
 
-The release manifest is generated from the actual archive in CI. Its URL points to the matching versioned release asset; no placeholder checksum or guessed file size is published.
+The release manifest is generated from the actual archive in CI. Its URL points to the matching versioned release asset; no placeholder checksum or guessed file size is published. The stable latest-release manifest endpoint for a future in-app updater is `https://github.com/tahmidgaming700/Experience-Ui-Apps/releases/latest/download/manifest.json`.
 
 ## Current archive contents
 
