@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="apps/experience-virtual-os/app/src/main"
-OUT="\${GITHUB_WORKSPACE:-.}/runtime-dist"
+OUT="${GITHUB_WORKSPACE:-.}/runtime-dist"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 ALPINE="$ROOT/assets/alpine/alpine-full-rootfs.bin"
@@ -23,9 +23,9 @@ SIZE="$(stat -f%z "$OUT/base.tar.gz")"
 SHA="$(awk '{print $1}' "$OUT/SHA256SUMS")"
 echo "Runtime bootstrap archive: $SIZE bytes"
 echo "SHA-256: $SHA"
-if [[ "\${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-  TAG="\${GITHUB_REF_NAME}"
-  VERSION="\${TAG#v}"
+if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+  TAG="${GITHUB_REF_NAME}"
+  VERSION="${TAG#v}"
   python3 - "$OUT/manifest.json" "$GITHUB_REPOSITORY" "$TAG" "$VERSION" "$SIZE" "$SHA" <<'PY'
 import json, pathlib, sys
 path, repo, tag, version, size, sha = sys.argv[1:]
