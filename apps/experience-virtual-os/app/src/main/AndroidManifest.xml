@@ -7,7 +7,7 @@
         android:extractNativeLibs="true"
         android:icon="@drawable/ic_experience_virtual_os"
         android:label="Experience Virtual OS"
-        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:theme="@style/Theme.ExperienceVirtualOS"
         android:usesCleartextTraffic="false">
         <activity
             android:name=".GuestDisplayActivity"
