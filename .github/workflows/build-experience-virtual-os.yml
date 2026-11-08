@@ -18,10 +18,8 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-26
     env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -32,12 +30,15 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Accept Android SDK licences
-        run: yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses
+        run: yes | sdkmanager --licenses
 
       - name: Install Android SDK packages
         run: |
-          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+          sdkmanager \
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
@@ -80,7 +81,7 @@ jobs:
           actual = hashlib.sha256(archive).hexdigest()
           if actual != expected:
               raise SystemExit("Alpine minirootfs checksum mismatch")
-          destination = pathlib.Path("apps/experience-virtual-os/app/src/main/assets/alpine/alpine-minirootfs.tar.gz")
+          destination = pathlib.Path("apps/experience-virtual-os/app/src/main/assets/alpine/alpine-minirootfs.bin")
           destination.parent.mkdir(parents=True, exist_ok=True)
           destination.write_bytes(archive)
           print(f"Verified Alpine {version} ARM64 minirootfs: {len(archive)} bytes")
@@ -94,7 +95,7 @@ jobs:
           mkdir -p /tmp/experience-proot apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a
           curl -fL "${BASE}/proot-aarch64.zip" -o /tmp/experience-proot/proot-aarch64.zip
           curl -fL "${BASE}/checksums.txt" -o /tmp/experience-proot/checksums.txt
-          (cd /tmp/experience-proot && grep 'proot-aarch64.zip' checksums.txt | sha256sum -c -)
+          (cd /tmp/experience-proot && grep 'proot-aarch64.zip' checksums.txt | shasum -a 256 -c -)
           unzip -q /tmp/experience-proot/proot-aarch64.zip -d /tmp/experience-proot/unpacked
           PROOT="$(find /tmp/experience-proot/unpacked -type f -name proot -print -quit)"
           LOADER="$(find /tmp/experience-proot/unpacked -type f -name loader -print -quit)"
@@ -110,7 +111,7 @@ jobs:
           URL="https://android.googlesource.com/platform/prebuilts/qemu-kernel/+/brillo-m7-mr-dev/arm64/kernel-qemu?format=TEXT"
           mkdir -p apps/experience-virtual-os/app/src/main/assets/kernel
           curl --retry 5 --retry-all-errors --retry-delay 3 -fsSL "$URL" -o "$RUNNER_TEMP/kernel-qemu.base64"
-          base64 --decode "$RUNNER_TEMP/kernel-qemu.base64" > apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu
+          python3 -c 'import base64,pathlib,sys; pathlib.Path(sys.argv[2]).write_bytes(base64.b64decode(pathlib.Path(sys.argv[1]).read_bytes()))' "$RUNNER_TEMP/kernel-qemu.base64" apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu
           python3 - <<'PY'
           import hashlib
           from pathlib import Path
@@ -153,7 +154,7 @@ jobs:
       - name: Verify runtime files before build
         run: |
           set -euo pipefail
-          ls -lh apps/experience-virtual-os/app/src/main/assets/alpine/alpine-minirootfs.tar.gz
+          ls -lh apps/experience-virtual-os/app/src/main/assets/alpine/alpine-minirootfs.bin
           ls -lh apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu
           ls -lh apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot.so
           ls -lh apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
@@ -176,11 +177,11 @@ jobs:
           echo "APK asset entries:"
           unzip -Z1 "$APK" | grep '^assets/' || true
           echo "Checking required Alpine and kernel assets..."
-          unzip -Z1 "$APK" | grep -Fx 'assets/alpine/alpine-minirootfs.tar'
+          unzip -Z1 "$APK" | grep -Fx 'assets/alpine/alpine-minirootfs.bin'
           unzip -Z1 "$APK" | grep -Fx 'assets/kernel/kernel-qemu'
-          unzip -p "$APK" assets/alpine/alpine-minirootfs.tar | gzip -t
-          test "$(unzip -p "$APK" assets/alpine/alpine-minirootfs.tar | wc -c)" -gt 1000000
-          echo "Verified Alpine archive and Google ARM64 kernel are present in the installable APK."
+          unzip -p "$APK" assets/alpine/alpine-minirootfs.bin | gzip -t
+          test "$(unzip -p "$APK" assets/alpine/alpine-minirootfs.bin | wc -c)" -gt 1000000
+          echo "Verified gzip-compressed Alpine archive and Google ARM64 kernel are present in the installable APK."
 
       - name: Build signed release APK
         if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.ready == 'true'
