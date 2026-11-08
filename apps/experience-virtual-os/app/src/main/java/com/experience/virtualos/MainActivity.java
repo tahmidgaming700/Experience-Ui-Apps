@@ -42,9 +42,16 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 public final class MainActivity extends Activity {
     private static final String PREFS = "experience_virtual_os";
     private static final int PICK_IMAGE = 41;
-    private static final String[] API_LEVELS = {"Android 9 (API 28)", "Android 10 (API 29)",
-            "Android 11 (API 30)", "Android 12 (API 31)", "Android 12L (API 32)", "Android 13 (API 33)",
-            "Android 14 (API 34)", "Android 15 (API 35)", "Android 16 (API 36)", "Android 17 (API 37)"};
+    private static final int[] API_CODES = {24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37};
+    private static final String[] API_LEVELS = {
+            "Android 7.0 (API 24)", "Android 7.1 (API 25)", "Android 8.0 (API 26)", "Android 8.1 (API 27)",
+            "Android 9 (API 28)", "Android 10 (API 29)", "Android 11 (API 30)", "Android 12 (API 31)",
+            "Android 12L (API 32)", "Android 13 (API 33)", "Android 14 (API 34)", "Android 15 (API 35)",
+            "Android 16 (API 36)", "Android 17 (API 37)"};
+
+    private static int apiCode(int selection) {
+        return API_CODES[Math.max(0, Math.min(API_CODES.length - 1, selection))];
+    }
 
     private SharedPreferences prefs;
     private LinearLayout page;
@@ -441,7 +448,7 @@ public final class MainActivity extends Activity {
     private void startAndroidGuest() {
         showRuntimeProgress("Starting Android guest", "Preparing the selected SDK image, guest storage and virtual hardware…", () -> {
             try {
-                GuestVmManager.start(this, 28 + prefs.getInt("api", 0), prefs.getInt("memory", 1024));
+                GuestVmManager.start(this, apiCode(prefs.getInt("api", 0)), prefs.getInt("memory", 1024));
                 Thread.sleep(2500);
                 if (!GuestVmManager.isRunning()) {
                     File log = GuestVmManager.logFile();
