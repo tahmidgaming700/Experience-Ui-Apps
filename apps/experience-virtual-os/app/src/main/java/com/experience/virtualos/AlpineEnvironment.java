@@ -11,6 +11,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -162,7 +163,9 @@ public final class AlpineEnvironment {
                 skipFully(in, padded(size));
                 ensureParent(target);
                 try {
-                    if (!Files.exists(target)) Os.symlink(link, target.toString());
+                    // NOFOLLOW_LINKS also detects dangling symlinks. Files.exists() alone follows
+                    // the link and reports false for a dangling target, causing EEXIST on retry.
+                    if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) Os.symlink(link, target.toString());
                 } catch (ErrnoException | UnsupportedOperationException e) {
                     throw new IOException("Cannot create Alpine symlink " + relative + " -> " + link
                             + ": " + e.getMessage(), e);
@@ -173,7 +176,7 @@ public final class AlpineEnvironment {
                 Path source = root.resolve(link).normalize();
                 if (!source.startsWith(root)) throw new IOException("Unsafe Alpine hardlink target: " + link);
                 ensureParent(target);
-                if (!Files.exists(target)) {
+                if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
                     if (!source.toFile().isFile()) {
                         throw new IOException("Alpine hardlink target is missing: " + link);
                     }
