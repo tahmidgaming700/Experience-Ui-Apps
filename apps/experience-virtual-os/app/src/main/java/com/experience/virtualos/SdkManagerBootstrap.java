@@ -20,7 +20,7 @@ public final class SdkManagerBootstrap {
             "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip";
     private static final String TOOLS_SHA256 =
             "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583";
-    private static final int MIN_API_LEVEL = 28;
+    private static final int MIN_API_LEVEL = 24;
     private static final int MAX_API_LEVEL = 37;
 
     public interface Progress {
@@ -78,12 +78,20 @@ public final class SdkManagerBootstrap {
                 "chmod +x " + quote(manager) + " && yes | " + quote(manager)
                         + " --sdk_root=" + quote(sdkPath) + " --licenses");
 
+        String imagePackage = "system-images;android-" + apiLevel + ";google_apis;arm64-v8a";
+        progress.onStage("Checking available ARM64 images for Android API " + apiLevel + "…");
+        String packageCatalog = AlpineRuntime.run(context,
+                quote(manager) + " --sdk_root=" + quote(sdkPath) + " --list");
+        if (!packageCatalog.contains(imagePackage)) {
+            throw new IOException("Google's SDK repository does not currently list the ARM64 Google APIs image for API "
+                    + apiLevel + ". Experience Virtual OS will not substitute an incompatible x86 or generic image.");
+        }
+
         progress.onStage("Installing Android API " + apiLevel + " platform and ARM64 system image…");
         AlpineRuntime.run(context,
                 quote(manager) + " --sdk_root=" + quote(sdkPath)
-                        + " --channel=0 \"platforms;android-" + apiLevel + "\""
-                        + " \"system-images;android-" + apiLevel
-                        + ";google_apis;arm64-v8a\"");
+                        + " --channel=0 " + quote("platforms;android-" + apiLevel)
+                        + " " + quote(imagePackage));
         new File(context.getFilesDir(), ".android-api-" + apiLevel + "-sdk-installed").createNewFile();
     }
 
