@@ -321,7 +321,7 @@ public final class MainActivity extends Activity {
 
         LinearLayout android = card();
         android.addView(label("ANDROID SYSTEM IMAGES", 12, 0xFF6750A4, true));
-        int api = 28 + prefs.getInt("api", 0);
+        int api = apiCode(prefs.getInt("api", 0));
         File imageDir = new File(SdkManagerBootstrap.sdkRoot(this),
                 "system-images/android-" + api + "/google_apis/arm64-v8a");
         android.addView(label("Android API " + api, 18, 0xFF211B2B, true));
@@ -533,7 +533,7 @@ public final class MainActivity extends Activity {
         panel.addView(details);
         new Thread(() -> {
             try {
-                SdkManagerBootstrap.installSelectedGuest(this, 28 + prefs.getInt("api", 0),
+                SdkManagerBootstrap.installSelectedGuest(this, apiCode(prefs.getInt("api", 0)),
                         message -> mainHandler.post(() -> stage.setText(message)));
                 mainHandler.post(() -> {
                     progress.setIndeterminate(false);
