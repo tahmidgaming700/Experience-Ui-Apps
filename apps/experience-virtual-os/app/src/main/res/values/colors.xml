@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="experience_primary">#6750A4</color>
+    <color name="experience_on_primary">#FFFFFF</color>
+    <color name="experience_primary_container">#EADDFF</color>
+    <color name="experience_on_primary_container">#21005D</color>
+    <color name="experience_secondary">#625B71</color>
+    <color name="experience_secondary_container">#E8DEF8</color>
+    <color name="experience_tertiary">#7D5260</color>
+    <color name="experience_surface">#FFFBFF</color>
+    <color name="experience_background">#F7F2FA</color>
+    <color name="experience_on_surface">#211B2B</color>
+    <color name="experience_outline">#79747E</color>
+</resources>
