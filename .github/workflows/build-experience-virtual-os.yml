@@ -176,10 +176,10 @@ jobs:
           echo "APK asset entries:"
           unzip -Z1 "$APK" | grep '^assets/' || true
           echo "Checking required Alpine and kernel assets..."
-          unzip -Z1 "$APK" | grep -Fx 'assets/alpine/alpine-minirootfs.tar.gz'
+          unzip -Z1 "$APK" | grep -Fx 'assets/alpine/alpine-minirootfs.tar'
           unzip -Z1 "$APK" | grep -Fx 'assets/kernel/kernel-qemu'
-          unzip -p "$APK" assets/alpine/alpine-minirootfs.tar.gz | gzip -t
-          test "$(unzip -p "$APK" assets/alpine/alpine-minirootfs.tar.gz | wc -c)" -gt 1000000
+          unzip -p "$APK" assets/alpine/alpine-minirootfs.tar | gzip -t
+          test "$(unzip -p "$APK" assets/alpine/alpine-minirootfs.tar | wc -c)" -gt 1000000
           echo "Verified Alpine archive and Google ARM64 kernel are present in the installable APK."
 
       - name: Build signed release APK
