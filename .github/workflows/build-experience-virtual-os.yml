@@ -150,14 +150,32 @@ jobs:
           echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
+      - name: Verify runtime files before build
+        run: |
+          set -euo pipefail
+          ls -lh apps/experience-virtual-os/app/src/main/assets/alpine/alpine-minirootfs.tar.gz
+          ls -lh apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu
+          ls -lh apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot.so
+          ls -lh apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
+
       - name: Build debug APK
         working-directory: apps/experience-virtual-os
         run: gradle --no-daemon assembleDebug
+
+      - name: Upload debug APK for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-virtual-os-debug
+          path: apps/experience-virtual-os/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
       - name: Verify bundled assets inside debug APK
         run: |
           set -euo pipefail
           APK="apps/experience-virtual-os/app/build/outputs/apk/debug/app-debug.apk"
+          echo "APK asset entries:"
+          unzip -Z1 "$APK" | grep '^assets/' || true
+          echo "Checking required Alpine and kernel assets..."
           unzip -Z1 "$APK" | grep -Fx 'assets/alpine/alpine-minirootfs.tar.gz'
           unzip -Z1 "$APK" | grep -Fx 'assets/kernel/kernel-qemu'
           unzip -p "$APK" assets/alpine/alpine-minirootfs.tar.gz | gzip -t
