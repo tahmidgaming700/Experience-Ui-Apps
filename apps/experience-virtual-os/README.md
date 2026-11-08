@@ -1,5 +1,24 @@
 # Experience Virtual OS
 
+A rootless Android virtual-machine manager for Android 9+ hosts, with an ARM64-first runtime and a mobile-first Material 3 interface.
+
+## Interface direction
+
+The application takes product-level inspiration from Vectras VM's virtual-machine library and workflow: a machine dashboard, image/library management, guided VM creation, runtime controls, guest display, monitoring and settings. Experience Virtual OS is an independent implementation; it does not copy Vectras source code.
+
+The interface uses Google's Material Components for Android with a Material 3 theme, rounded expressive cards, tonal surfaces, prominent actions and a guided setup experience. The current implementation is a first visual foundation, not a claim that every Vectras feature has already been implemented.
+
+## Alpine Linux integration
+
+Alpine is a first-class, private runtime foundation rather than a user-facing terminal:
+
+- The ARM64 Alpine minirootfs is bundled as an APK asset and extracted into app-private storage.
+- PRoot launches Alpine commands without root or bootloader changes.
+- QEMU and qemu-img are installed and verified inside Alpine.
+- The dashboard exposes guided runtime installation and package maintenance; command output stays inside the app.
+- The app must preserve Alpine's release branch and package consistency. A package upgrade is not the same as upgrading the Alpine major release.
+
+
 A rootless Android virtual-device application inspired by the convenience of a desktop AVD manager, designed around a mobile-first setup experience.
 
 ## Product experience
