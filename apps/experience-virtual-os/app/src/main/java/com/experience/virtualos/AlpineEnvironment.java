@@ -20,7 +20,8 @@ import java.util.zip.GZIPInputStream;
 /** Installs and validates the bundled Alpine ARM64 minirootfs in app-private storage. */
 public final class AlpineEnvironment {
     // AAPT2 removes the .gz suffix when packaging gzip assets; the bytes remain gzip-compressed.
-    private static final String ASSET = "alpine/alpine-minirootfs.tar";
+    // Keep the gzip payload under a neutral extension: AAPT2 strips .gz assets during packaging.
+    private static final String ASSET = "alpine/alpine-minirootfs.bin";
     private static final String MARKER = ".experience-alpine-installed";
 
     private AlpineEnvironment() {}
