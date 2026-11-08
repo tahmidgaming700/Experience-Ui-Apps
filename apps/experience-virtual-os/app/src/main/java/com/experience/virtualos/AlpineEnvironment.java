@@ -23,7 +23,7 @@ import java.util.zip.GZIPInputStream;
  */
 public final class AlpineEnvironment {
     // AAPT2 strips .gz from packaged asset names; the bytes remain gzip-compressed.
-    private static final String ASSET = "alpine/alpine-minirootfs.bin";
+    private static final String ASSET = "alpine/alpine-full-rootfs.bin";
     private static final String MARKER = ".experience-alpine-installed";
 
     private AlpineEnvironment() {}
