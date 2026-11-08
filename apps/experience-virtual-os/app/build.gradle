@@ -6,6 +6,13 @@ android {
     namespace 'com.experience.virtualos'
     compileSdk 36
 
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets']
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
     defaultConfig {
         applicationId 'com.experience.virtualos'
         minSdk 28
