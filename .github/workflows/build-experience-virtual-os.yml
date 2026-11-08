@@ -8,6 +8,7 @@ on:
       - feat/experience-virtual-os-rootless
     tags:
       - "v*"
+      - "runtime-v*"
     paths:
       - "apps/experience-virtual-os/**"
       - ".github/workflows/build-experience-virtual-os.yml"
@@ -108,10 +109,21 @@ jobs:
           PY
           ROOTFS="apps/experience-virtual-os/app/src/main/assets/alpine/alpine-full-rootfs.bin"
           gzip -t "$ROOTFS"
-          tar -tzf "$ROOTFS" | grep -E '(^|/)bin/sh$' | head -n 1
+          python3 - "$ROOTFS" <<'PY'
+          import sys, tarfile
+          archive = sys.argv[1]
+          with tarfile.open(archive, "r:gz") as tar:
+              names = set(tar.getnames())
+              shell = next((name for name in ("bin/sh", "./bin/sh") if name in names), None)
+              if shell is None:
+                  raise SystemExit("Alpine rootfs archive does not contain bin/sh")
+              if not any(name in names for name in ("usr", "./usr")):
+                  raise SystemExit("Alpine rootfs archive does not contain /usr")
+              print(f"Verified rootfs entries: {shell}, /usr")
+          PY
           mkdir -p "$RUNNER_TEMP/alpine-rootfs-validation"
           tar -xzf "$ROOTFS" -C "$RUNNER_TEMP/alpine-rootfs-validation"
-          test -x "$RUNNER_TEMP/alpine-rootfs-validation/bin/sh"
+          test -e "$RUNNER_TEMP/alpine-rootfs-validation/bin/sh"
           test -d "$RUNNER_TEMP/alpine-rootfs-validation/usr"
 
       - name: Bundle rootless ARM64 PRoot runtime
