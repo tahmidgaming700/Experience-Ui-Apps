@@ -39,7 +39,7 @@ REQUIRED = list(ENTRYPOINTS.values()) + [
 CAPABILITIES = {
     "linuxUserspace": "supported",
     "linuxGuestArm64": "experimental",
-    "androidGuest": "experimental",
+    "androidGuest": "experimental-console-only",
 }
 NOTES = (
     "Alpine Linux ARM64 userspace with Alpine's musl-linked QEMU, run under PRoot "
@@ -93,9 +93,9 @@ def main():
     ap.add_argument("--output")
     args = ap.parse_args()
 
-    match = re.fullmatch(r"runtime-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)", args.tag)
+    match = re.fullmatch(r"(?:runtime-)?v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)", args.tag)
     if not match:
-        raise SystemExit(f"tag must look like runtime-v1.2.3, got {args.tag}")
+        raise SystemExit(f"tag must look like v1.2.3 or runtime-v1.2.3, got {args.tag}")
     version = match.group(1)
 
     archive = os.path.join(args.dist, "base.tar.gz")

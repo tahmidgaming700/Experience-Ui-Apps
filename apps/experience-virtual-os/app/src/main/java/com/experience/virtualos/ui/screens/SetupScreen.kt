@@ -188,7 +188,7 @@ private fun ExpectationsStep(arm64: Boolean) {
     Headline("What to expect", "Straight answers before you download anything.")
     SectionCard {
         Capability(Icons.Outlined.CheckCircle, Tone.GOOD, "Linux ARM64 virtual machines",
-            "Boot ARM64 installer or live ISOs (Alpine, Debian, Ubuntu Server…) with UEFI, a virtual disk, networking and a touch-controlled display.")
+            "Boot ARM64 installer or live ISOs (Alpine, Debian, Ubuntu Server…) with UEFI, a virtual disk, networking and a touch-controlled display. Verified with Alpine Linux; still experimental on phones.")
         Capability(Icons.Outlined.WarningAmber, Tone.WARN, "Android system images — experimental, console only",
             "Google's Android 11 image starts its kernel and system services, but cannot show a screen: its graphics need the Android Emulator's goldfish pipe, which QEMU on a phone cannot provide.")
         Capability(Icons.Outlined.Block, Tone.BAD, "Not a second Android with apps",

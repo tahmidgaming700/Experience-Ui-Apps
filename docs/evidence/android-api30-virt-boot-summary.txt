@@ -1,0 +1,20 @@
+# API 30 AOSP arm64 (arm64-v8a-30_r02.zip, sha1 e96298145a5e0bfd6da4816f51b06c520d8dba72) on upstream QEMU 8.2 virt, TCG, cortex-a57, 12 min
+[    0.000000] Linux version 5.4.86-android11-2-00006-gae78026f427c-ab7595864 (build-user@build-host) (Android (7284624, based on r416183b) clang version 12.0.5 (https://android.googlesource.com/toolchain/llvm-project c935d99d7cf2016289302412d708641d52d2f7ee), LLD 12.0.5 (/buildbot/src/android/llvm-toolchain/out/llvm-project/lld c935d99d7cf2016289302412d708641d52d2f7ee)) #1 SMP PREEMPT Thu Jul 29 20:54:47 UTC 2021
+[    7.480964] init: [libfs_mgr]__mount(source=/dev/block/platform/a003c00.virtio_mmio/by-name/metadata,target=/metadata,type=ext4)=0: Success
+[    7.623805] init: [libfs_mgr]__mount(source=/dev/block/dm-0,target=/system,type=ext4)=0: Success
+[    7.714174] init: [libfs_mgr]__mount(source=/dev/block/dm-3,target=/vendor,type=ext4)=0: Success
+[    7.793713] init: [libfs_mgr]__mount(source=/dev/block/dm-2,target=/product,type=ext4)=0: Success
+[    7.864088] init: [libfs_mgr]__mount(source=/dev/block/dm-1,target=/system_ext,type=ext4)=0: Success
+[   22.722675] init: [libfs_mgr]check_fs(): mount(/dev/block/vdc,/data,ext4)=0: Success
+[   24.128893] init: [libfs_mgr]__mount(source=/dev/block/vdc,target=/data,type=ext4)=0: Success
+[   45.596880] init: starting service 'zygote'...
+[   61.846590] init: starting service 'surfaceflinger'...
+    128 Service 'audioserver' received signal 9
+    124 Service 'vendor.audio-hal' received signal 9
+     50 Service 'zygote' received signal 9
+     50 Service 'wificond' received signal 9
+     50 Service 'netd' received signal 9
+     50 Service 'media' received signal 9
+     50 Service 'cameraserver' received signal 9
+     36 Service 'surfaceflinger' received signal 9
+[  165.682161] DEBUG: Abort message: 'eglQueryStringImplementationANDROID(EGL_VERSION) failed'

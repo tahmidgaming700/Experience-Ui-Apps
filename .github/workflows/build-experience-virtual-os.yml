@@ -1,39 +1,87 @@
 name: Build Experience Virtual OS
 
+# Three jobs:
+#   runtime  - builds base.tar.gz from pinned Alpine inputs, verifies ELF
+#              closure, smoke-tests QEMU under qemu-user, writes manifest.json
+#   android  - builds and tests the APK (unit + Robolectric UI tests, lint),
+#              extracts the real runtime archive in a test, inspects the APK
+#   release  - tags only: assembles a DRAFT GitHub Release from the verified
+#              artifacts. A maintainer publishes it after testing on a device.
+
 on:
   workflow_dispatch:
   push:
     branches:
       - main
       - feat/experience-virtual-os-rootless
+      - "claude/experience-virtual-os-**"
     tags:
       - "v*"
       - "runtime-v*"
+  pull_request:
     paths:
       - "apps/experience-virtual-os/**"
+      - "scripts/**"
       - ".github/workflows/build-experience-virtual-os.yml"
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
+
+concurrency:
+  group: evos-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  APP_DIR: apps/experience-virtual-os
 
 jobs:
-  build:
-    runs-on: macos-26
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Verify Apple Silicon ARM64 runner
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user patchelf binutils
+          qemu-aarch64 --version | head -1
+
+      - name: Build runtime archive
+        run: sudo -E bash scripts/build-experience-virtual-os-runtime.sh runtime-dist
+
+      - name: Generate manifest from the built archive
         run: |
           set -euo pipefail
-          echo "Runner: $(uname -a)"
-          ARCH="$(uname -m)"
-          if [ "$ARCH" != "arm64" ]; then
-            echo "Expected macOS ARM64 runner, got: $ARCH" >&2
-            exit 1
-          fi
-          system_profiler SPHardwareDataType | grep -E 'Chip|Processor Name|Total Number of Cores' || true
+          sudo chown -R "$(id -u):$(id -g)" runtime-dist
+          VERSION="$(cat scripts/experience-virtual-os-runtime-version)"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then TAG="${GITHUB_REF_NAME}"; else TAG="runtime-v${VERSION}-ci.${GITHUB_RUN_NUMBER}"; fi
+          python3 -I scripts/generate-runtime-manifest.py --dist runtime-dist --repo "${GITHUB_REPOSITORY}" \
+            --tag "$TAG" --min-app-version-code 6
+          (cd runtime-dist && sha256sum -c SHA256SUMS)
+
+      - name: Upload runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-virtual-os-runtime
+          path: |
+            runtime-dist/base.tar.gz
+            runtime-dist/SHA256SUMS
+            runtime-dist/manifest.json
+            runtime-dist/runtime-info.json
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-24.04
+    needs: runtime
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Validate Gradle wrapper checksum
+        uses: gradle/actions/wrapper-validation@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -41,135 +89,38 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Configure preinstalled Android SDK
-        run: |
-          echo "ANDROID_HOME=$HOME/Library/Android/sdk" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$HOME/Library/Android/sdk" >> "$GITHUB_ENV"
-          echo "$HOME/Library/Android/sdk/platform-tools" >> "$GITHUB_PATH"
-          echo "$HOME/Library/Android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-
-      - name: Accept Android SDK licences
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Install Android SDK packages
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > "$APP_DIR/local.properties"
 
-      - name: Install Gradle 8.13 with checksum verification
+      - name: Fetch and verify Bionic ARM64 PRoot
         run: |
-          set -euo pipefail
-          VERSION="8.13"
-          ZIP="$RUNNER_TEMP/gradle-$VERSION-bin.zip"
-          curl -fL --retry 10 --retry-all-errors --retry-delay 5 "https://services.gradle.org/distributions/gradle-$VERSION-bin.zip" -o "$ZIP"
-          curl -fL --retry 10 --retry-all-errors --retry-delay 5 "https://services.gradle.org/distributions/gradle-$VERSION-bin.zip.sha256" -o "$ZIP.sha256"
-          EXPECTED="$(awk '{print $1}' "$ZIP.sha256")"
-          ACTUAL="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
-          test "$EXPECTED" = "$ACTUAL"
-          unzip -q "$ZIP" -d "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/gradle-$VERSION/bin" >> "$GITHUB_PATH"
+          sudo apt-get install -y -qq patchelf binutils
+          bash scripts/fetch-termux-proot.sh "$APP_DIR/app/src/main/jniLibs/arm64-v8a"
 
-      - name: Verify toolchain
-        run: |
-          java -version
-          gradle --version
-          "${ANDROID_HOME}/platform-tools/adb" version
+      - name: Download runtime artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: experience-virtual-os-runtime
+          path: runtime-dist
 
-      - name: Fetch and verify full Alpine ARM64 root filesystem
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import hashlib
-          import pathlib
-          import urllib.request
+      - name: Unit, UI and runtime-extraction tests
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          EVOS_RUNTIME_ARCHIVE: ${{ github.workspace }}/runtime-dist/base.tar.gz
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
 
-          version = "3.24.4"
-          base = "https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/aarch64"
-          filename = f"alpine-rpi-{version}-aarch64.tar.gz"
-
-          def fetch(url):
-              request = urllib.request.Request(url, headers={"User-Agent": "Experience-Virtual-OS-CI"})
-              with urllib.request.urlopen(request, timeout=180) as response:
-                  return response.read()
-
-          archive = fetch(base + "/" + filename)
-          checksum_text = fetch(base + "/" + filename + ".sha256").decode("utf-8", "replace")
-          expected = checksum_text.split()[0].lower()
-          actual = hashlib.sha256(archive).hexdigest()
-          if not expected or actual != expected:
-              raise SystemExit("Full Alpine ARM64 root filesystem checksum verification failed")
-          if len(archive) < 60_000_000:
-              raise SystemExit(f"Expected full Alpine rootfs, got only {len(archive)} bytes")
-          destination = pathlib.Path("apps/experience-virtual-os/app/src/main/assets/alpine/alpine-full-rootfs.bin")
-          destination.parent.mkdir(parents=True, exist_ok=True)
-          destination.write_bytes(archive)
-          print(f"Verified full Alpine {version} ARM64 rootfs: {len(archive)} bytes, SHA-256 {actual}")
-          PY
-          ROOTFS="apps/experience-virtual-os/app/src/main/assets/alpine/alpine-full-rootfs.bin"
-          gzip -t "$ROOTFS"
-          python3 - "$ROOTFS" <<'PY'
-          import sys, tarfile
-          archive = sys.argv[1]
-          with tarfile.open(archive, "r:gz") as tar:
-              names = set(tar.getnames())
-              shell = next((name for name in ("bin/sh", "./bin/sh") if name in names), None)
-              if shell is None:
-                  raise SystemExit("Alpine rootfs archive does not contain bin/sh")
-              if not any(name in names for name in ("usr", "./usr")):
-                  raise SystemExit("Alpine rootfs archive does not contain /usr")
-              print(f"Verified rootfs entries: {shell}, /usr")
-          PY
-          mkdir -p "$RUNNER_TEMP/alpine-rootfs-validation"
-          tar -xzf "$ROOTFS" -C "$RUNNER_TEMP/alpine-rootfs-validation"
-          test -e "$RUNNER_TEMP/alpine-rootfs-validation/bin/sh"
-          test -d "$RUNNER_TEMP/alpine-rootfs-validation/usr"
-
-      - name: Bundle rootless ARM64 PRoot runtime
-        run: |
-          set -euo pipefail
-          VERSION="v26.10.08-a179d3e"
-          BASE="https://github.com/ahmed-alnassif/proot/releases/download/${VERSION}"
-          mkdir -p /tmp/experience-proot apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a
-          curl -fL "${BASE}/proot-aarch64.zip" -o /tmp/experience-proot/proot-aarch64.zip
-          curl -fL "${BASE}/checksums.txt" -o /tmp/experience-proot/checksums.txt
-          (cd /tmp/experience-proot && grep 'proot-aarch64.zip' checksums.txt | shasum -a 256 -c -)
-          unzip -q /tmp/experience-proot/proot-aarch64.zip -d /tmp/experience-proot/unpacked
-          PROOT="$(find /tmp/experience-proot/unpacked -type f -name proot -print -quit)"
-          LOADER="$(find /tmp/experience-proot/unpacked -type f -name loader -print -quit)"
-          test -n "${PROOT}" && test -n "${LOADER}"
-          install -m 0755 "${PROOT}" apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot.so
-          install -m 0755 "${LOADER}" apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
-          file apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot.so
-          file apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
-
-      - name: Download and verify prebuilt Google ARM64 kernel-qemu
-        run: |
-          set -euo pipefail
-          URL="https://android.googlesource.com/platform/prebuilts/qemu-kernel/+/brillo-m7-mr-dev/arm64/kernel-qemu?format=TEXT"
-          mkdir -p apps/experience-virtual-os/app/src/main/assets/kernel
-          curl --retry 5 --retry-all-errors --retry-delay 3 -fsSL "$URL" -o "$RUNNER_TEMP/kernel-qemu.base64"
-          python3 -c 'import base64,pathlib,sys; pathlib.Path(sys.argv[2]).write_bytes(base64.b64decode(pathlib.Path(sys.argv[1]).read_bytes()))' "$RUNNER_TEMP/kernel-qemu.base64" apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu
-          python3 - <<'PY'
-          import hashlib
-          from pathlib import Path
-          path = Path("apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu")
-          data = path.read_bytes()
-          expected_size = 6157664
-          expected_git_blob = "6c2586739fab700a48c3440732c80262fc7875bd"
-          actual_git_blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
-          if len(data) != expected_size:
-              raise SystemExit(f"Unexpected kernel size: {len(data)} bytes")
-          if actual_git_blob != expected_git_blob:
-              raise SystemExit(f"Git blob verification failed: {actual_git_blob}")
-          print(f"Verified Google ARM64 kernel-qemu: {len(data)} bytes, Git blob {actual_git_blob}")
-          PY
-          file apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu
+      - name: Lint
+        working-directory: ${{ env.APP_DIR }}
+        run: ./gradlew --no-daemon lintDebug
 
       - name: Prepare release signing key
         id: signing
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -178,99 +129,126 @@ jobs:
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Release signing secrets are not configured; no installable release will be published."
+            echo "::notice::Release signing secrets are not configured; the release APK stays unsigned."
             exit 0
           fi
-          KEYSTORE_PATH="$RUNNER_TEMP/experience-virtual-os-release.jks"
-          export ANDROID_KEYSTORE_BASE64 KEYSTORE_PATH
-          python3 - <<'PY'
-          import base64, os
-          from pathlib import Path
-          Path(os.environ["KEYSTORE_PATH"]).write_bytes(base64.b64decode(os.environ["ANDROID_KEYSTORE_BASE64"]))
-          PY
-          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
-          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
-          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+          KEYSTORE="$RUNNER_TEMP/release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > /dev/null
+          {
+            echo "ANDROID_KEYSTORE_PATH=$KEYSTORE"
+            echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - name: Verify runtime files before build
+      - name: Build debug and release APKs
+        working-directory: ${{ env.APP_DIR }}
+        run: ./gradlew --no-daemon assembleDebug assembleRelease
+
+      - name: Inspect APKs
         run: |
           set -euo pipefail
-          ls -lh apps/experience-virtual-os/app/src/main/assets/alpine/alpine-full-rootfs.bin
-          ls -lh apps/experience-virtual-os/app/src/main/assets/kernel/kernel-qemu
-          ls -lh apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot.so
-          ls -lh apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
+          OUT="$APP_DIR/app/build/outputs/apk"
+          python3 -I scripts/verify-experience-virtual-os-apk.py "$OUT/debug/app-debug.apk"
+          RELEASE="$(ls "$OUT"/release/*.apk | head -1)"
+          python3 -I scripts/verify-experience-virtual-os-apk.py "$RELEASE"
+          AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          "$AAPT2" dump badging "$RELEASE" | grep -E "^package: name='com.experience.virtualos'"
+          "$AAPT2" dump badging "$RELEASE" | grep -E "^(package|sdkVersion|targetSdkVersion|native-code|uses-permission)"
+          if [[ "${{ steps.signing.outputs.ready }}" == "true" ]]; then
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$RELEASE"
+          fi
+          mkdir -p apk-dist
+          cp "$OUT/debug/app-debug.apk" apk-dist/experience-virtual-os-debug.apk
+          cp "$RELEASE" "apk-dist/experience-virtual-os-release$([[ "${{ steps.signing.outputs.ready }}" == "true" ]] || echo -unsigned).apk"
+          (cd apk-dist && sha256sum *.apk | tee APK-SHA256SUMS)
 
-      - name: Package GitHub Releases runtime bootstrap
-        run: bash scripts/package-experience-virtual-os-runtime.sh
-
-      - name: Upload runtime bootstrap for CI inspection
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: experience-virtual-os-runtime
+          name: experience-virtual-os-apk
+          path: apk-dist/
+          if-no-files-found: error
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-virtual-os-reports
           path: |
-            runtime-dist/base.tar.gz
-            runtime-dist/SHA256SUMS
-          if-no-files-found: error
+            ${{ env.APP_DIR }}/app/build/reports/
+            ${{ env.APP_DIR }}/app/build/test-results/
+          if-no-files-found: ignore
 
-      - name: Upload release manifest for CI inspection
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-artifact@v4
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [runtime, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: experience-virtual-os-runtime-manifest
-          path: runtime-dist/manifest.json
-          if-no-files-found: error
+          path: dist
 
-      - name: Build debug APK
-        working-directory: apps/experience-virtual-os
-        run: gradle --no-daemon --stacktrace clean assembleDebug
-
-      - name: Upload debug APK for inspection
-        uses: actions/upload-artifact@v4
-        with:
-          name: experience-virtual-os-debug
-          path: apps/experience-virtual-os/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
-      - name: Verify bundled assets inside debug APK
+      - name: Re-verify assets and write release notes
         run: |
           set -euo pipefail
-          APK="apps/experience-virtual-os/app/build/outputs/apk/debug/app-debug.apk"
-          echo "APK asset entries:"
-          unzip -Z1 "$APK" | grep '^assets/' || true
-          echo "Checking required Alpine and kernel assets..."
-          unzip -Z1 "$APK" | grep -Fx 'assets/alpine/alpine-full-rootfs.bin'
-          unzip -Z1 "$APK" | grep -Fx 'assets/kernel/kernel-qemu'
-          unzip -p "$APK" assets/alpine/alpine-full-rootfs.bin | gzip -t
-          test "$(unzip -p "$APK" assets/alpine/alpine-full-rootfs.bin | wc -c)" -gt 60000000
-          echo "Verified full Alpine ARM64 rootfs and Google ARM64 kernel are present in the installable APK."
-          echo "APK file size: $(stat -f%z "$APK") bytes"
-          echo "Native ARM64 libraries in APK:"
-          unzip -Z1 "$APK" | grep '^lib/arm64-v8a/' || true
+          cd dist/experience-virtual-os-runtime
+          sha256sum -c SHA256SUMS
+          python3 - <<'PY'
+          import json, pathlib
+          m = json.loads(pathlib.Path("manifest.json").read_text())
+          assert m["releaseTag"] == "${{ github.ref_name }}", "manifest tag mismatch"
+          assert m["archive"]["sizeBytes"] == pathlib.Path("base.tar.gz").stat().st_size
+          caps = "\n".join(f"| {k} | {v} |" for k, v in m["capabilities"].items())
+          notes = f"""## Experience Virtual OS {m['releaseTag']}
 
-      - name: Build signed release APK
-        if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.ready == 'true'
-        working-directory: apps/experience-virtual-os
-        run: gradle --no-daemon assembleRelease
+          **Draft — publish only after testing on an ARM64 Android device.**
 
-      - name: Publish runtime bootstrap to GitHub Releases
-        if: startsWith(github.ref, 'refs/tags/')
+          ### Assets
+          | File | Purpose |
+          |---|---|
+          | `experience-virtual-os-release*.apk` | Android app (arm64-v8a, Android 9+) |
+          | `base.tar.gz` | Runtime: {m['components']['userspace']} ({m['components']['libc']}) + QEMU {m['components']['qemu']} |
+          | `SHA256SUMS` | SHA-256 of base.tar.gz |
+          | `manifest.json` | Runtime manifest (schema {m['schemaVersion']}) read by the app |
+
+          Runtime archive: {m['archive']['sizeBytes']} bytes, SHA-256 `{m['archive']['sha256']}`, unpacks to {m['archive']['unpackedSizeBytes']} bytes.
+
+          ### Compatibility
+          * Host: ARM64 (arm64-v8a) Android 9 (API 28) or newer. No root, no bootloader unlock.
+          * Acceleration: KVM is used only if /dev/kvm is accessible to apps (rare); otherwise TCG software emulation.
+
+          | Capability | Level |
+          |---|---|
+          {caps}
+
+          * **Linux ARM64 guests** (UEFI ISO installers / live images): experimental. The QEMU configuration the app generates was verified booting Alpine 3.24 virt to a login prompt with a virtio-gpu display on an x86_64 Linux host; on-phone performance and stability still need device testing.
+          * **Android system images**: experimental, console only. Kernel, init and native services start on QEMU `virt`; there is no display because the images' graphics require the Android Emulator's goldfish pipe.
+          * This runtime is **not** the Android Emulator and does not provide Google Play or Android app support.
+
+          See docs/experience-virtual-os-guest-compatibility.md for the full matrix.
+          """
+          pathlib.Path("../release-notes.md").write_text(notes)
+          PY
+
+      - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
-          name: Experience Virtual OS Runtime ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            runtime-dist/base.tar.gz
-            runtime-dist/SHA256SUMS
-            runtime-dist/manifest.json
-
-      - name: Attach signed APK to the same release
-        if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.ready == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
+          draft: true
           name: Experience Virtual OS ${{ github.ref_name }}
-          files: apps/experience-virtual-os/app/build/outputs/apk/release/app-release.apk
+          body_path: dist/release-notes.md
           fail_on_unmatched_files: true
-
+          files: |
+            dist/experience-virtual-os-runtime/base.tar.gz
+            dist/experience-virtual-os-runtime/SHA256SUMS
+            dist/experience-virtual-os-runtime/manifest.json
+            dist/experience-virtual-os-apk/experience-virtual-os-release*.apk
+            dist/experience-virtual-os-apk/APK-SHA256SUMS

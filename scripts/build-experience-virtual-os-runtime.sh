@@ -81,6 +81,8 @@ echo "==> Installing ${PACKAGES[*]}"
   --no-scripts --no-cache --update-cache add "${PACKAGES[@]}"
 
 printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "$ROOT/etc/resolv.conf"
+# apk.log records wall-clock install times; empty it so builds are reproducible.
+: > "$ROOT/var/log/apk.log"
 mkdir -p "$ROOT/root" "$ROOT/tmp" "$ROOT/workspace"
 chmod 1777 "$ROOT/tmp"
 

@@ -1,186 +1,137 @@
 # Experience Virtual OS
 
-A rootless Android virtual-machine manager for Android 9+ hosts, with an ARM64-first runtime and a mobile-first Material 3 interface.
+A rootless virtual-machine manager for ARM64 Android phones (Android 9+). It runs
+QEMU inside a private Alpine Linux userspace under PRoot — no root, no bootloader
+unlock, no system modification.
 
-## Interface direction
+**What works today, honestly stated** (details and evidence in
+[`docs/experience-virtual-os-guest-compatibility.md`](../../docs/experience-virtual-os-guest-compatibility.md)):
 
-The application takes product-level inspiration from Vectras VM's virtual-machine library and workflow: a machine dashboard, image/library management, guided VM creation, runtime controls, guest display, monitoring and settings. Experience Virtual OS is an independent implementation; it does not copy Vectras source code.
+| Capability | Status |
+|---|---|
+| Runtime download, SHA-256 verification, atomic install, repair, update, offline import | Implemented, unit-tested |
+| Virtual-device database (create, edit, duplicate, delete, import/export) | Implemented, unit-tested |
+| Linux ARM64 guests (UEFI ISO, virtio disk/GPU/net, touch + keyboard over local VNC) | Experimental — QEMU configuration verified booting Alpine 3.24 to a login prompt; not yet run on a phone |
+| Android system images (Google AOSP ARM64) | Experimental, **console only** — kernel, init and native services start; no display is possible without the Android Emulator's goldfish pipe |
+| Google Play / Android app compatibility | Not provided |
 
-The interface uses Google's Material Components for Android with a Material 3 theme, rounded expressive cards, tonal surfaces, prominent actions and a guided setup experience. The current implementation is a first visual foundation, not a claim that every Vectras feature has already been implemented.
+## Architecture
 
-## Alpine Linux integration
-
-Alpine is a first-class, private runtime foundation rather than a user-facing terminal:
-
-- The ARM64 Alpine minirootfs is bundled as an APK asset and extracted into app-private storage.
-- PRoot launches Alpine commands without root or bootloader changes.
-- QEMU and qemu-img are installed and verified inside Alpine.
-- The dashboard exposes guided runtime installation and package maintenance; command output stays inside the app.
-- The app must preserve Alpine's release branch and package consistency. A package upgrade is not the same as upgrading the Alpine major release.
-
-
-A rootless Android virtual-device application inspired by the convenience of a desktop AVD manager, designed around a mobile-first setup experience.
-
-## Product experience
-
-The user-facing flow is an operating-system installer: welcome, language, Android guest version, memory, private environment preparation, then the virtual-device home. Internal Linux components and command execution are implementation details and are not exposed as a user terminal.
-
-## Host requirements and safety
-
-- Android 9 (API 28) and newer.
-- ARM64-first; Huawei Y9 2019 (JKM-LX2 / Kirin 710 / EMUI 9.1) is a target for compatibility testing.
-- No host root, bootloader unlock, Magisk, KernelSU or host partition modification.
-- Any future guest-root option applies only inside a compatible guest image.
-
-## Android guest targets
-
-The setup catalogue includes Android 9 through Android 17 (API 28–37). Android 17 is API 37. Selecting a guest API level is configuration only: the corresponding ARM64 system image must be discovered and downloaded from Google's SDK package repository before that guest can be launched.
-
-Google's SDK Manager downloads SDK platforms, tools and system-image packages. It does not itself provide a mobile-ready emulator runtime. The standard Android Emulator package is a separate host executable and cannot be assumed to run on an ARM64 Android phone. The intended phone runtime is a separately built ARM64 QEMU system emulator using TCG software emulation, with a compatible Android guest machine profile.
-
-## Current alpha implementation
-
-- Native first-run installer-style setup for language, Android guest API level, RAM and guest-root preference.
-- Private base-environment bootstrap: CI fetches the latest stable Alpine ARM64 minirootfs from the official Alpine mirror, verifies its SHA-256 checksum and bundles it into the APK. The app installs it into app-private storage during first-run preparation.
-- Base-environment preparation screen with a progress indicator. Internal Linux implementation details are not exposed as a user terminal.
-- Existing Google ARM64 SDK image package downloads for the supplied API 28–33 archive URLs, plus image import.
-- GitHub Releases update centre: checks releases, displays notes, downloads APK assets and invokes Android's package installer with user approval.
-- Release workflow only publishes an installable APK when a persistent signing keystore is configured through Actions secrets.
-
-## Runtime status — important
-
-The base Alpine filesystem is installed as data. **It is not yet launched as a Linux process environment.** A compatible Android ARM64 PRoot/process layer, a Java runtime for SDK command-line tools, SDK package discovery/installation, and secure lifecycle management are still required.
-
-**The Android virtual machine is not yet implemented.** The remaining runtime work includes a QEMU ARM64 TCG build suitable for Android, Android guest image validation (kernel, ramdisk, system/vendor and userdata layout), virtual hardware configuration, storage, networking, display rendering, touch/keyboard input, audio and VM lifecycle. No Android guest boot or live VNC display is claimed until it is built and tested on the target phone.
-
-The intended guest display is an in-app surface. A local VNC server is one possible display transport, but it must be integrated and secured inside the app; it is not currently included.
-
-## App updates
-
-Push a version tag such as `v0.2.0-alpha01` to build an APK. To publish an installable release, configure the repository Actions secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` with the same persistent signing key used for every release. If these secrets are absent, the workflow skips release publishing. Android's package installer always asks the user to approve an update.
-
-## Build
-
-JDK 17, Android SDK Platform 35 and Gradle 8.9:
-
-```sh
-gradle --no-daemon assembleDebug
+```
+APK (Kotlin, Compose Material 3)                      GitHub Release (separate)
+├─ UI: setup wizard, dashboard, devices, images,      ├─ base.tar.gz     Alpine 3.24 aarch64 rootfs
+│      runtime, settings/diagnostics                  │                  + qemu-system-aarch64, qemu-img,
+├─ core/runtime  manifest → download → SHA-256 →      │                    virtio-gpu modules, e2fsprogs
+│                safe tar extract → self-test →       ├─ SHA256SUMS
+│                atomic activation                    └─ manifest.json   schema 2, generated from the archive
+├─ core/proot    starts guest processes via
+│                lib/arm64-v8a/libproot.so (Bionic)   App-private storage (files/)
+├─ core/vm       device DB, QEMU argv builder,        ├─ runtime/current.json + versions/<v>/rootfs
+│                VmController, foreground service     ├─ devices/devices.json + <id>/ (disks, logs)
+├─ core/images   Google sys-img catalogue + install   ├─ images/<id>/ (Android system images)
+└─ GuestDisplayActivity + RfbClient (127.0.0.1 VNC)   └─ logs/activity.json
 ```
 
-Output: `app/build/outputs/apk/debug/app-debug.apk`.
+Host-side and guest-side binaries are kept strictly apart:
 
-The GitHub Actions workflow fetches and verifies the Alpine ARM64 root filesystem before building. The APK is uploaded as a workflow artifact. Version tags beginning with `v` publish a GitHub Release only when release signing secrets are configured.
+* **Android/Bionic (in the APK):** `libproot.so`, `libproot-loader.so`, `libtalloc.so`,
+  `libandroid-shmem.so` — Termux's PRoot build, fetched and SHA-256 pinned by
+  `scripts/fetch-termux-proot.sh`, with `NEEDED`/`RUNPATH` rewritten for `nativeLibraryDir`.
+* **Linux/musl (in the runtime archive):** everything QEMU needs. These binaries only run
+  inside the Alpine root under PRoot; they are never executed directly on Bionic.
 
-## OneOS relationship
+QEMU's VNC server and QMP monitor listen on `127.0.0.1` only. Guest disks, logs and the
+launch command for each device live in `files/devices/<id>/`.
 
-This is an independent implementation inspired by the OneOS product concept. The original OneOS switcher uses privileged operations that conflict with the unrooted-host requirement. This app does not copy or invoke that privileged switcher.
+### Key decisions
 
-## Image provenance
+* **Runtime outside the APK.** The APK is ~5 MB; the 34 MB runtime is versioned and verified
+  independently, can be repaired or updated without reinstalling the app, and the previous
+  runtime keeps working until a new one has passed extraction, required-path and on-device
+  self-test checks.
+* **Own tar extractor.** Android 9's toybox has no reliable `tar`; the Kotlin extractor handles
+  symlinks, hard links (with copy fallback, since apps are often denied `link()`), GNU long names
+  and pax headers, and refuses traversal or writes through symlinks.
+* **Alpine QEMU instead of Termux QEMU.** Termux's `qemu-system-aarch64` drags in PulseAudio,
+  JACK, SPICE and ~40 other Termux libraries with a hard-coded `/data/data/com.termux` prefix.
+  Alpine's musl build under PRoot is self-contained and signature-verified by `apk`.
+* **No `kernel-qemu`.** The previously bundled brillo `kernel-qemu` is a 3.10 goldfish kernel that
+  cannot boot any API 24–37 image; Android images bring their own `kernel-ranchu`.
+* **Material 3.** Stable Compose Material3 1.4 keeps `MaterialExpressiveTheme` internal, so
+  Expressive tokens (shape scale, emphasised type, spring motion) are applied through `MaterialTheme`
+  rather than depending on an alpha library.
+* **One running device at a time.** TCG guests are CPU- and RAM-heavy; phones like the Huawei Y9 2019
+  have 3–4 GB of RAM.
 
-Alpine minirootfs is obtained from the official Alpine Linux mirror and checksum-verified at build time. Google SDK images are Google's materials and are downloaded from Google's SDK repositories by the app/runtime rather than redistributed in this repository.
+## Building
 
+Requirements: JDK 17, Android SDK platform 36 + build-tools 36.0.0, Linux host with
+`patchelf` and `binutils` (for the PRoot fetch). The Gradle wrapper (8.14.3) is checksum-pinned.
 
-## Runtime feasibility and current implementation boundary
+```sh
+# Native PRoot libraries (not committed; written to app/src/main/jniLibs/)
+bash scripts/fetch-termux-proot.sh apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a
 
-The app now performs read-only host checks for ARM64 support, available memory,
-CPU count, and the presence/read/write permissions of `/dev/kvm`. These checks
-are diagnostic only: an accessible KVM node does not prove that a usable Android
-guest machine profile or graphics path exists.
+cd apps/experience-virtual-os
+./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease
+python3 ../../scripts/verify-experience-virtual-os-apk.py app/build/outputs/apk/debug/app-debug.apk
+```
 
-The five runtime milestones remain distinct engineering tasks:
+Building the runtime archive (Linux, as root because `apk` writes a package database):
 
-1. **Private Linux execution:** the bundled Alpine root filesystem is currently
-   extracted as private app data. It is not yet started. A rootless process
-   supervisor such as PRoot must be built for Android/Bionic, bundled with its
-   dependencies, and validated under the target device's SELinux and ptrace rules.
-2. **SDK tooling:** Google's command-line SDK tools require a compatible Java
-   runtime. Installing Alpine packages alone does not make `sdkmanager` runnable
-   inside an Android app; the Java runtime, SDK tools, package licences, storage,
-   and process execution all need integration.
-3. **Guest images:** SDK system-image packages are designed for Google's Android
-   Emulator/AVD runtime. Android 17 GSI downloads are a separate distribution
-   intended for supported physical-device GSI testing/flashing; they are not
-   turnkey QEMU virtual-machine disks.
-4. **Virtual-machine engine:** upstream QEMU can emulate ARM guests with TCG, but
-   Google's emulator images rely on the Android Emulator's own machine/device
-   model. A generic upstream QEMU ARM board is not a drop-in replacement for the
-   emulator's ranchu/goldfish devices. The app needs a compatible guest kernel,
-   machine model, devices, and boot configuration.
-5. **Interactive display:** only after a guest reaches a stable boot can the app
-   attach a local display/input transport (for example, a loopback-only VNC
-   bridge or an in-process renderer). No network listener should be exposed to
-   the LAN, and no terminal UI is part of the product.
+```sh
+sudo bash scripts/build-experience-virtual-os-runtime.sh runtime-dist
+python3 scripts/generate-runtime-manifest.py --dist runtime-dist \
+  --repo tahmidgaming700/Experience-Ui-Apps --tag runtime-v0.6.0 --min-app-version-code 6
+```
 
-The current release therefore does not claim to boot Android. The host capability
-panel is intended to establish whether hardware acceleration is even available
-on the target phone before selecting and building the correct engine. TCG-only
-emulation may be too slow for a usable Android desktop on a mid-range phone.
+Set `EVOS_RUNTIME_ARCHIVE=$PWD/runtime-dist/base.tar.gz` when running the unit tests to also
+extract the real archive with the app's extractor.
 
+### Tests
 
-## Private Android SDK installation
+* `TarExtractorTest` — links, modes, long names, pax, traversal/absolute/symlink-escape rejection,
+  corrupt and truncated archives, real runtime archive.
+* `RuntimeInstallerTest` — install, checksum mismatch keeps the old runtime, incomplete archives,
+  failed self-test, resumed downloads, update/repair, storage checks, manifest validation.
+* `DeviceAndQemuTest` — persistence, duplicate/import/export, validation, QEMU argv for Linux,
+  KVM and Android profiles, Google catalogue parsing, GPT partition detection.
+* `UiSmokeTest` (Robolectric, API 28) — walks the setup wizard and main tabs.
 
-The dashboard now includes an in-app **Install selected Android SDK + system image**
-action. The installer uses the API level selected in the setup wizard (Android 9 through Android 17). It:
+## CI and releases
 
-- Extracts the bundled Alpine ARM64 root filesystem into app-private storage.
-- Starts Alpine through the bundled ARM64 PRoot executable and its Android
-  executable loader. No shell or terminal is presented to the user.
-- Installs the Alpine Java 17 runtime and certificate bundle.
-- Downloads Google's Linux command-line tools archive
-  `commandlinetools-linux-15859902_latest.zip` and verifies its SHA-256
-  (`4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583)).
-- Presents an explicit SDK licence confirmation before accepting package licences.
-- Invokes `sdkmanager` to request `platforms;android-37` and
-  `system-images;android-37;google_apis;arm64-v8a`.
+`.github/workflows/build-experience-virtual-os.yml` builds the runtime, the APKs and all tests on
+every push. Tags `v*` / `runtime-v*` create a **draft** GitHub Release with the APK, `base.tar.gz`,
+`SHA256SUMS`, `manifest.json` and generated notes. A maintainer publishes it after testing on a
+device; only then does `releases/latest/download/manifest.json` resolve for the app. See
+[`docs/experience-virtual-os-runtime-releases.md`](../../docs/experience-virtual-os-runtime-releases.md).
 
-SDK package installation is a separate milestone from booting the downloaded
-image. A successful SDK Manager installation proves that the packages were
-resolved and installed; it does not prove that the Android Emulator's
-ranchu/goldfish machine model can boot on this Android host. The next runtime
-work is the compatible guest machine/graphics path and interactive input.
+## Testing on a Huawei Y9 2019 (JKM-LX2, Kirin 710, EMUI 9.1)
 
-The PRoot executable and loader are fetched in CI from the ARM64 release of
-[ahmed-alnassif/proot](https://github.com/ahmed-alnassif/proot), verified against
-its published SHA-256 manifest, and packaged as extracted native libraries.
-The project is GPL-3.0; the upstream Termux PRoot code is GPL-2.0-or-later.
-Review the bundled third-party notices and source obligations before publishing
-redistributable releases.
+1. Download `experience-virtual-os-debug.apk` (or the release APK) and `experience-virtual-os-runtime`
+   from the workflow run's artifacts, or from a draft release.
+2. Install the APK (Settings › Security › allow installs from your file manager), open it and go
+   through setup. The "Checking this phone" step should show ARM64, Android 9 (API 28) and
+   *Software emulation (TCG)*; no `/dev/kvm` is expected on this phone.
+3. EMUI kills background apps aggressively: Settings › Battery › App launch › Experience Virtual OS
+   › *Manage manually*, enable all three toggles.
+4. Install the runtime: if a release is published, tap **Download and install**; otherwise use
+   **Install from files** and pick `base.tar.gz` then `manifest.json` from the CI artifact. The
+   install ends with an on-device self-test (`qemu-system-aarch64 --version` through PRoot). If that
+   self-test fails, enable *Settings › PRoot compatibility mode* and retry, then share the
+   diagnostics report.
+5. Create a **Linux ARM64** device (1024 MB, 2 vCPU, 8 GB disk), open it, **Attach installer ISO**
+   (e.g. `alpine-virt-3.24.4-aarch64.iso`, 70 MB) and **Start**. Watch the *Serial console* tab:
+   UEFI, then the Linux kernel, then a login prompt. Expect several minutes on a Kirin 710.
+   **Display** opens the guest framebuffer; touch acts as an absolute pointer and the *Keyboard*
+   button opens the on-screen keyboard. Log in as `root`.
+6. **Shut down** sends an ACPI power-down through QMP and falls back to termination.
+7. Optional, experimental: install the *Android 11 · API 30 · default* image (548 MB) from Images,
+   create an Android device (≥ 2048 MB) and start it. Expect kernel and `init` output in the serial
+   console and repeated `surfaceflinger`/`zygote` restarts — there will be no Android screen.
 
+Please report results (Settings › Diagnostics › Share report, plus the Serial and QEMU logs).
 
-## ARM64 Android guest runtime and display
+## Third-party software
 
-The app now has a guest execution path, rather than only preparing SDK packages:
-
-- QEMU is installed inside the private Alpine rootfs as a fallback engine.
-- CI downloads the prebuilt ARM64 `kernel-qemu` binary from the
-  Google `platform/prebuilts/qemu-kernel` repository at the pinned
-  `brillo-m7-mr-dev` revision. It verifies the exact 6,157,664-byte size and
-  Git blob SHA-1 before packaging it into the APK.
-- The app copies this kernel into its private files directory and passes it to
-  the ARM64 `qemu-system-aarch64` runtime installed in the private Alpine
-  environment. No Android Emulator source build, `repo` tool, or Ranchu
-  artifact is required.
-- The guest boot path attaches the selected SDK ramdisk, system, optional
-  vendor and writable userdata images. It requests KVM only when the host
-  exposes a readable and writable `/dev/kvm`; otherwise it selects TCG
-  software emulation.
-- The emulator passes a QEMU VNC display on `127.0.0.1:5901`. The Android app contains
-  an RFB 3.8 client that draws framebuffer updates and forwards touch pointer
-  events and keyboard input to the guest. No VNC port is exposed to the LAN.
-- Dashboard actions provide engine installation, guest start/stop, display
-  reopen and runtime log inspection.
-
-The supplied kernel is an older Android/QEMU kernel, not a modern
-Android Emulator Ranchu kernel. It is bundled and selected by the app as
-requested, but compatibility with current Google SDK system images is not
-established. A successful APK build only verifies packaging and compilation;
-actual guest boot, display, graphics and input still require testing on the
-target device. If this kernel does not match the SDK image's userspace or
-virtual hardware, the next step is to select a matching guest image/kernel
-pair—not to claim that the VM has booted.
-
-### Build outputs
-
-The **Build Experience Virtual OS** workflow produces
-`experience-virtual-os-debug`, with the verified prebuilt Google ARM64
-`kernel-qemu` bundled in the APK.
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
