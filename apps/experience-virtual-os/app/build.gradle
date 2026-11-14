@@ -1,62 +1,124 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+    id 'org.jetbrains.kotlin.plugin.serialization'
 }
 
 android {
     namespace 'com.experience.virtualos'
     compileSdk 36
 
-    sourceSets {
-        main {
-            assets.srcDirs = ['src/main/assets']
-            jniLibs.srcDirs = ['src/main/jniLibs']
-        }
-    }
-
     defaultConfig {
         applicationId 'com.experience.virtualos'
         minSdk 28
         targetSdk 35
-        versionCode 5
-        versionName '0.5.0-alpha01'
+        versionCode 6
+        versionName '0.6.0-alpha01'
+        // Only ARM64 hosts are supported: the bundled PRoot and the runtime
+        // archive are arm64-v8a builds.
+        ndk { abiFilters 'arm64-v8a' }
+        buildConfigField 'String', 'RUNTIME_MANIFEST_URL',
+                '"https://github.com/tahmidgaming700/Experience-Ui-Apps/releases/latest/download/manifest.json"'
+        buildConfigField 'int', 'RUNTIME_SCHEMA_VERSION', '2'
     }
 
     signingConfigs {
         release {
-            storeFile file(System.getenv("ANDROID_KEYSTORE_PATH") ?: "release-keystore.jks")
-            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ""
-            keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: ""
-            keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: ""
+            def keystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
-            minifyEnabled false
+            // R8 shrinks the Compose/icon libraries from ~70 MB of dex to a few MB.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (System.getenv('ANDROID_KEYSTORE_PATH')) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
     packaging {
         jniLibs {
+            // PRoot is executed from nativeLibraryDir, so the libraries must be
+            // extracted to disk at install time rather than mapped from the APK.
             useLegacyPackaging true
         }
     }
 
     buildFeatures {
         buildConfig true
+        compose true
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            // Android always uses UTF-8 file names; make the JVM match so the
+            // real runtime archive (which has UTF-8 names) extracts in tests.
+            environment 'LC_ALL', 'C.UTF-8'
+            environment 'LANG', 'C.UTF-8'
+            systemProperty 'sun.jnu.encoding', 'UTF-8'
+            systemProperty 'file.encoding', 'UTF-8'
+            if (System.getenv('EVOS_RUNTIME_ARCHIVE')) environment 'EVOS_RUNTIME_ARCHIVE', System.getenv('EVOS_RUNTIME_ARCHIVE')
+        }
+    }
+
+    lint {
+        // The APK only ships arm64-v8a PRoot binaries; x86_64 ChromeOS cannot run them.
+        disable 'ChromeOsAbiSupport'
+        // Dependencies are pinned deliberately; upgrades go through CI review.
+        disable 'GradleDependency', 'NewerVersionAvailable', 'AndroidGradlePluginVersion'
+        abortOnError true
+        checkReleaseBuilds true
+        warningsAsErrors false
+    }
 }
 
-
 dependencies {
-    implementation 'com.google.android.material:material:1.14.0'
-    implementation 'androidx.appcompat:appcompat:1.7.1'
-    implementation 'androidx.activity:activity:1.13.0'
-    implementation 'androidx.core:core:1.16.0'
+    def composeBom = platform('androidx.compose:compose-bom:2025.10.01')
+    implementation composeBom
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.activity:activity-compose:1.11.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.9.4'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4'
+    implementation 'androidx.lifecycle:lifecycle-service:2.9.4'
+    implementation 'androidx.navigation:navigation-compose:2.9.5'
+    implementation 'androidx.work:work-runtime-ktx:2.10.5'
+    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    // Material Components supplies the XML window theme used before Compose draws.
+    implementation 'com.google.android.material:material:1.13.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.16'
+    testImplementation 'androidx.compose.ui:ui-test-junit4'
+    testImplementation 'androidx.test:core-ktx:1.7.0'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
 }

@@ -10,13 +10,14 @@ public final class RfbClient implements AutoCloseable {
     private final Listener listener; private final Object lock=new Object();
     private volatile boolean running=true; private Socket socket; private DataInputStream in; private DataOutputStream out;
     private Bitmap bitmap; private int width,height;
-    public RfbClient(Listener l){listener=l;}
+    private final int port;
+    public RfbClient(Listener l,int port){listener=l;this.port=port;}
     public void run(){
         Exception last=null;
         long deadline=System.currentTimeMillis()+30000L;
         while(running && System.currentTimeMillis()<deadline){
             try {
-                socket=new Socket(); socket.connect(new InetSocketAddress("127.0.0.1",5901),2500); socket.setTcpNoDelay(true);
+                socket=new Socket(); socket.connect(new InetSocketAddress("127.0.0.1",port),2500); socket.setTcpNoDelay(true);
                 in=new DataInputStream(new BufferedInputStream(socket.getInputStream())); out=new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
                 handshake(); readLoop(); return;
             } catch(Exception e){
@@ -29,7 +30,7 @@ public final class RfbClient implements AutoCloseable {
         closeSocket();
     }
     private void handshake() throws IOException {
-        byte[] version=new byte[12]; in.readFully(version); write("RFB 003.008\\n".getBytes("US-ASCII"));
+        byte[] version=new byte[12]; in.readFully(version); write("RFB 003.008\n".getBytes("US-ASCII"));
         int count=in.readUnsignedByte(); if(count==0){int n=in.readInt();byte[] why=new byte[Math.max(0,Math.min(n,4096))];in.readFully(why);throw new IOException(new String(why,"UTF-8"));}
         boolean none=false; for(int i=0;i<count;i++) if(in.readUnsignedByte()==1) none=true;
         if(!none) throw new IOException("VNC server does not offer local no-auth mode.");
@@ -52,6 +53,9 @@ public final class RfbClient implements AutoCloseable {
                 for(int i=0;i<count;i++) rectangle();
                 listener.frame(bitmap);
                 request(true);
+            }else if(type==1){
+                in.readUnsignedByte(); in.readUnsignedShort();
+                int colours=in.readUnsignedShort(); byte[] ignored=new byte[colours*6]; in.readFully(ignored);
             }else if(type==2){
                 // Server bell; no audio is required for framebuffer updates.
             }else if(type==3){
