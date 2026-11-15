@@ -48,8 +48,7 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq proot
-          uname -m
+          uname -m   # native ARM64: the build uses chroot, no emulation
 
       - name: Build runtime archive
         run: sudo -E bash scripts/build-experience-virtual-os-runtime.sh runtime-dist

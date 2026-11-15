@@ -11,8 +11,8 @@
 #   rootfs/               Ubuntu arm64 root filesystem with QEMU preinstalled
 #
 # Usage: scripts/build-experience-virtual-os-runtime.sh <output-dir>
-# Requires: curl, tar, gzip, sha256sum, python3, apt-get, proot; qemu-aarch64 on
-# non-ARM64 hosts. Must run as root (or sudo) so file ownership is preserved.
+# Requires: curl, tar, gzip, sha256sum, python3, apt-get; on non-ARM64 hosts
+# also proot and qemu-aarch64 (qemu-user). Must run as root (or sudo) so file ownership is preserved.
 #
 # Packages are resolved and downloaded by the host's apt (arm64 configuration,
 # signatures verified with the keyring from the checksum-verified base tarball)
@@ -42,15 +42,24 @@ PACKAGES=(
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1767225600}"
 
 [[ "$(id -u)" == "0" ]] || { echo "Run as root (sudo) so the root filesystem keeps its ownership." >&2; exit 1; }
-command -v proot >/dev/null || { echo "proot is required (apt install proot)" >&2; exit 1; }
+NATIVE=0
 QEMU_FLAG=()
-if [[ "$(uname -m)" != "aarch64" ]]; then
+if [[ "$(uname -m)" == "aarch64" ]]; then
+  NATIVE=1   # real ARM64 host: plain chroot with bind mounts
+else
+  command -v proot >/dev/null || { echo "proot is required on $(uname -m) hosts (apt install proot)" >&2; exit 1; }
   command -v qemu-aarch64 >/dev/null || { echo "qemu-aarch64 (qemu-user) is required on $(uname -m) hosts" >&2; exit 1; }
   QEMU_FLAG=(-q qemu-aarch64)
 fi
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+cleanup() {
+  if [[ $NATIVE == 1 && -n "${ROOT:-}" ]]; then
+    for m in dev/pts dev proc sys; do umount -l "$ROOT/$m" 2>/dev/null || true; done
+  fi
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 STAGE="$WORK/stage"
@@ -63,13 +72,20 @@ echo "$BASE_SHA256  $WORK/$BASE_TARBALL" | sha256sum -c - >/dev/null || { echo "
 tar -xzf "$WORK/$BASE_TARBALL" -C "$ROOT" --numeric-owner
 test -e "$ROOT/usr/bin/apt-get" || { echo "base tarball has no apt-get" >&2; exit 1; }
 
-# Run a command inside the root as fake root (same mechanism the app uses).
+# Run a command inside the root: chroot on ARM64 hosts, PRoot + qemu-user
+# (fake root) elsewhere.
 # shellcheck disable=SC2206
 EXTRA_BINDS=(${APT_BINDS:-})
+ENV_CLEAN=(/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin LANG=C.UTF-8 DEBIAN_FRONTEND=noninteractive)
+if [[ $NATIVE == 1 ]]; then
+  for m in dev dev/pts proc sys; do mkdir -p "$ROOT/$m"; mount --bind "/$m" "$ROOT/$m"; done
+fi
 in_root() {
-  proot "${QEMU_FLAG[@]}" -0 -r "$ROOT" -b /dev -b /proc -b /sys "${EXTRA_BINDS[@]}" -w / \
-    /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin LANG=C.UTF-8 \
-    DEBIAN_FRONTEND=noninteractive "$@"
+  if [[ $NATIVE == 1 ]]; then
+    chroot "$ROOT" "${ENV_CLEAN[@]}" "$@"
+  else
+    proot "${QEMU_FLAG[@]}" -0 -r "$ROOT" -b /dev -b /proc -b /sys "${EXTRA_BINDS[@]}" -w / "${ENV_CLEAN[@]}" "$@"
+  fi
 }
 
 cat > "$ROOT/etc/apt/sources.list.d/ubuntu.sources" <<EOF
@@ -176,11 +192,15 @@ for _ in $(seq 1 60); do
   [[ -n "$BANNER" ]] && break
   sleep 1
 done
+pkill -f 'qemu-system-aarch64 -machine none -S' 2>/dev/null || true
 kill "$QPID" 2>/dev/null || true
 wait "$QPID" 2>/dev/null || true
 [[ "$BANNER" == RFB\ 003.* ]] || { echo "QEMU VNC server did not answer with an RFB banner" >&2; exit 1; }
 echo "VNC handshake OK: $BANNER"
 
+if [[ $NATIVE == 1 ]]; then
+  for m in dev/pts dev proc sys; do umount -l "$ROOT/$m"; done
+fi
 echo "==> Packing base.tar.gz"
 tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
   -C "$STAGE" -cf - runtime-info.json rootfs | gzip -n -9 > "$OUT/base.tar.gz"
