@@ -104,6 +104,8 @@ android_app_import {
     name: "ExperienceCamera",
     apk: "ExperienceCamera/ExperienceCamera.apk",
     certificate: "platform",
+    // GSIs usually ship no camera app; replace the AOSP/Lineage ones if a base adds them.
+    overrides: ["Camera2", "Snap", "Aperture"],
 }
 
 android_app_import {
