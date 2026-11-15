@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 108dp adaptive icon foreground: person glyph on an address card. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M36,32h36a6,6 0,0 1,6 6v32a6,6 0,0 1,-6 6h-36a6,6 0,0 1,-6 -6v-32a6,6 0,0 1,6 -6z" />
+    <path android:fillColor="#FFD0602A" android:pathData="M54,48m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0" />
+    <path android:fillColor="#FFD0602A" android:pathData="M40,70c0,-7 6.3,-12 14,-12s14,5 14,12z" />
+</vector>
