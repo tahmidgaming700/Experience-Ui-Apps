@@ -15,8 +15,8 @@ native applications and its own branding on **LineageOS 18.1** with the
 | Build display | `Experience UI 1.0 (EXP1.0.0.<UTC build id>.userdebug)` |
 | Distribution | GitHub Releases (draft pre-releases until boot-verified) |
 
-> **Status, honestly stated.** The 14 Experience apps build, pass their unit tests and
-> lint in CI. The ROM tree, patches and overlays are checked against the real LineageOS
+> **Status, honestly stated.** The 14 Experience apps build, pass their 220 unit tests
+> and lint. The ROM tree, patches and overlays are checked against the real LineageOS
 > 18.1 sources on every change. **The full ROM has not been compiled yet** — that needs
 > a self-hosted build machine (below) — and **no device has booted Experience UI**. See
 > [docs/build-status.md](docs/build-status.md) and [docs/compatibility.md](docs/compatibility.md).
@@ -53,7 +53,37 @@ apps/experience-virtual-os/   Experience Virtual OS (separate product, unchanged
 app/                          Legacy standalone GSI updater app (unchanged, see app/README.md)
 ```
 
-<!-- APPS-SECTION -->
+## Experience applications
+
+All 14 apps are native Kotlin + Jetpack Compose apps (no WebViews), min/target SDK 30,
+built on the shared `core-design` system and installed in the ROM as platform-signed
+system apps. **220 unit tests**; the whole suite passes `testDebugUnitTest`, `lintDebug`
+(no errors) and `assembleRelease`.
+
+| App | Package | Partition | Highlights | Not implemented |
+|---|---|---|---|---|
+| Launcher | `com.experience.launcher` | priv-app, HOME | Paged home grid + dock, searchable drawer over `LauncherApps` (work profile badge/pause), app shortcuts, adaptive icon rendering | Widgets, drag-and-drop; recents stay in Launcher3/Trebuchet |
+| Settings | `com.experience.settings` | priv-app | Searchable hub, 15 pages of real controls, Experience Style (seed / wallpaper → palette + nearest accent overlay, icon shapes), About Experience UI, System updates (manifest, download, SHA-256, flashing steps; never flashes), tile in AOSP Settings | Mobile data/airplane are links; update download is not a foreground service |
+| Setup Wizard | `com.experience.setupwizard` | priv-app, replaces Provision/LineageSetupWizard | Welcome, language, region, accessibility, Wi-Fi connect, date & time, privacy, contacts import, accounts, navigation mode, done; marks device provisioned, sets Experience Launcher as HOME, reports failed steps | Cloud restore (no Google services) |
+| Dialer | `com.experience.dialer` | priv-app, DIALER role | Keypad with DTMF and T9, recents, favourites, InCallService call UI (routes, hold, DTMF, call waiting, conferences, reply with SMS), call notifications | Visual voicemail, video calls, RTT, recording |
+| Messages | `com.experience.messages` | app, SMS role | Conversations, threads, multipart SMS with delivery status, receive, direct reply, multi-SIM | **MMS download/send** (AOSP Messaging stays installed) |
+| Contacts | `com.experience.contacts` | app, replaces Contacts | List/detail/editor, photos, vCard 2.1/3.0 import/export, INSERT/EDIT/PICK intents | Linking/joining, groups |
+| Notes | `com.experience.notes` | app | Notes and checklists, colours, pin/archive/trash, search, autosave, share, pinned shortcuts | — |
+| Clock | `com.experience.clock` | app, replaces DeskClock | Alarms (DST-safe, direct boot), world clocks, multiple timers, stopwatch, AlarmClock intents | Silencing alarms during calls |
+| Calendar | `com.experience.calendar` | app, replaces Etar | Month/agenda/day views, recurring events (RRULE), reminders and notifications, local calendar | Editing a single occurrence, attendees |
+| Calculator | `com.experience.calculator` | app, replaces ExactCalculator | Own BigDecimal engine (exact trig at standard angles), history, scientific panel | — |
+| Files | `com.experience.files` | app | Volumes, categories, search, copy/move with progress, zip extraction, GET_CONTENT picker | — (DocumentsUI stays as the platform picker) |
+| Gallery | `com.experience.gallery` | app | Timeline, albums, zoom viewer, video, MediaStore delete/favourite requests, pickers | Animated GIF/WebP, in-app editing |
+| Camera | `com.experience.camera` | app | CameraX photo/video, flash, timer, grid, focus, zoom, capture intents for other apps | Lock-screen camera, HDR/night extensions |
+| Converter | `com.experience.converter` | app | 13 unit categories with exact factors, number bases | Currency (needs a rate source) |
+
+Known gap across apps: UI strings are mostly in Kotlin rather than `strings.xml`, so
+translation needs them extracted first.
+
+ROM integration data (privileged permissions, default runtime grants, roles,
+overrides) lives in `rom/vendor/experience/prebuilt/apps/Android.bp` and
+`rom/vendor/experience/permissions/`; the privileged allowlist is generated from the APKs.
+
 
 ## How Experience UI changes Android
 

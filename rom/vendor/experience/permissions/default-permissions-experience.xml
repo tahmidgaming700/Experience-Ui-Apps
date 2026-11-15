@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2026 The Experience UI Project. Licensed under the Apache License, Version 2.0. -->
+<!--
+    Runtime permissions granted by default to the Experience system apps
+    (/system/etc/default-permissions). Grants are not "fixed": users can revoke them
+    in Settings > Apps. Dialer and Messages also receive their permissions through
+    the DIALER and SMS roles; they are listed so the apps work before the role
+    controller runs on first boot.
+
+    Not grantable here: All-files access for Experience Files (MANAGE_EXTERNAL_STORAGE
+    is an app-op on Android 11; the app asks for it), and app-ops that come with roles.
+-->
+<exceptions>
+    <exception package="com.experience.dialer">
+        <permission name="android.permission.CALL_PHONE" fixed="false" />
+        <permission name="android.permission.READ_CALL_LOG" fixed="false" />
+        <permission name="android.permission.WRITE_CALL_LOG" fixed="false" />
+        <permission name="android.permission.READ_CONTACTS" fixed="false" />
+        <permission name="android.permission.READ_PHONE_STATE" fixed="false" />
+    </exception>
+    <exception package="com.experience.messages">
+        <permission name="android.permission.READ_SMS" fixed="false" />
+        <permission name="android.permission.SEND_SMS" fixed="false" />
+        <permission name="android.permission.RECEIVE_SMS" fixed="false" />
+        <permission name="android.permission.RECEIVE_MMS" fixed="false" />
+        <permission name="android.permission.RECEIVE_WAP_PUSH" fixed="false" />
+        <permission name="android.permission.READ_CONTACTS" fixed="false" />
+        <permission name="android.permission.READ_PHONE_STATE" fixed="false" />
+    </exception>
+    <exception package="com.experience.contacts">
+        <permission name="android.permission.READ_CONTACTS" fixed="false" />
+        <permission name="android.permission.WRITE_CONTACTS" fixed="false" />
+    </exception>
+    <exception package="com.experience.calendar">
+        <permission name="android.permission.READ_CALENDAR" fixed="false" />
+        <permission name="android.permission.WRITE_CALENDAR" fixed="false" />
+    </exception>
+    <exception package="com.experience.camera">
+        <permission name="android.permission.CAMERA" fixed="false" />
+        <permission name="android.permission.RECORD_AUDIO" fixed="false" />
+    </exception>
+    <exception package="com.experience.gallery">
+        <permission name="android.permission.READ_EXTERNAL_STORAGE" fixed="false" />
+    </exception>
+    <!-- Wi-Fi scan results and the SSID require location on Android 11. -->
+    <exception package="com.experience.setupwizard">
+        <permission name="android.permission.ACCESS_FINE_LOCATION" fixed="false" />
+        <permission name="android.permission.ACCESS_COARSE_LOCATION" fixed="false" />
+    </exception>
+    <exception package="com.experience.settings">
+        <permission name="android.permission.ACCESS_FINE_LOCATION" fixed="false" />
+    </exception>
+</exceptions>

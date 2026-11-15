@@ -47,9 +47,9 @@ android_app_import {
     name: "ExperienceMessages",
     apk: "ExperienceMessages/ExperienceMessages.apk",
     certificate: "platform",
-    privileged: true,
-    // AOSP Messaging stays installed: it can download/send MMS, which Experience
-    // Messages does not implement yet.
+    // Needs no privileged permissions (SMS access comes from the SMS role), so it is
+    // a plain system app. AOSP Messaging stays installed: it can download/send MMS,
+    // which Experience Messages does not implement yet.
 }
 
 android_app_import {
@@ -90,7 +90,6 @@ android_app_import {
     name: "ExperienceFiles",
     apk: "ExperienceFiles/ExperienceFiles.apk",
     certificate: "platform",
-    privileged: true,
 }
 
 android_app_import {

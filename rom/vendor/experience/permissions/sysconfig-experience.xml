@@ -14,6 +14,4 @@
     <hidden-api-whitelisted-app package="com.experience.settings" />
     <hidden-api-whitelisted-app package="com.experience.setupwizard" />
     <hidden-api-whitelisted-app package="com.experience.dialer" />
-    <hidden-api-whitelisted-app package="com.experience.messages" />
-    <hidden-api-whitelisted-app package="com.experience.files" />
 </config>

@@ -32,9 +32,8 @@ PROPS_PRODUCT = """ro.config.ringtone=Experience_Horizon.ogg
 ro.config.notification_sound=Experience_Bloom.ogg
 ro.config.alarm_alert=Experience_Daybreak.ogg
 """
-PRIV = ["ExperienceLauncher", "ExperienceSettings", "ExperienceSetupWizard", "ExperienceDialer",
-        "ExperienceMessages", "ExperienceFiles"]
-APPS = ["ExperienceContacts", "ExperienceNotes", "ExperienceClock", "ExperienceCalendar",
+PRIV = ["ExperienceLauncher", "ExperienceSettings", "ExperienceSetupWizard", "ExperienceDialer"]
+APPS = ["ExperienceMessages", "ExperienceFiles", "ExperienceContacts", "ExperienceNotes", "ExperienceClock", "ExperienceCalendar",
         "ExperienceCalculator", "ExperienceGallery", "ExperienceCamera", "ExperienceConverter"]
 ACCENTS = ["Indigo", "Azure", "Teal", "Verdant", "Amber", "Coral", "Rose", "Violet", "Graphite"]
 

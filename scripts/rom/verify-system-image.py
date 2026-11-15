@@ -30,9 +30,8 @@ import tempfile
 SPARSE_MAGIC = 0xED26FF3A
 EXT4_MAGIC = 0xEF53
 
-PRIV_APPS = ["ExperienceLauncher", "ExperienceSettings", "ExperienceSetupWizard", "ExperienceDialer",
-             "ExperienceMessages", "ExperienceFiles"]
-APPS = ["ExperienceContacts", "ExperienceNotes", "ExperienceClock", "ExperienceCalendar",
+PRIV_APPS = ["ExperienceLauncher", "ExperienceSettings", "ExperienceSetupWizard", "ExperienceDialer"]
+APPS = ["ExperienceMessages", "ExperienceFiles", "ExperienceContacts", "ExperienceNotes", "ExperienceClock", "ExperienceCalendar",
         "ExperienceCalculator", "ExperienceGallery", "ExperienceCamera", "ExperienceConverter"]
 REPLACED = ["LineageSetupWizard", "Provision", "Updater", "Contacts", "DeskClock", "Etar", "ExactCalculator"]
 ACCENTS = ["Indigo", "Azure", "Teal", "Verdant", "Amber", "Coral", "Rose", "Violet", "Graphite"]
