@@ -73,6 +73,24 @@ to boot and single-digit frames per second).
 | PRoot is Bionic (`/system/bin/linker64`), AArch64, deps resolvable from APK + system | `fetch-termux-proot.sh`, `verify-experience-virtual-os-apk.py` | ✓ |
 | Runtime archive extracts with the app's own extractor (UTF-8 names, symlinks, hardlinks) | `TarExtractorTest.extractsRealRuntimeArchive` | ✓ |
 
+## Verified on a real Android ARM64 kernel (runtime 0.7, Ubuntu)
+
+Same setup as below (Android 11, kernel 5.4.86, `shell` user, the APK's PRoot, `ProotLauncher`
+flags), with the CI-built Ubuntu runtime (`base.tar.gz` SHA-256 `827a6ebc…`):
+
+| Step | Result |
+|---|---|
+| PRoot → Ubuntu shell (`PRETTY_NAME` = Ubuntu 26.04.1 LTS, aarch64, glibc 2.43, fake root) | ✓ |
+| `qemu-system-aarch64 --version` (install self-test) | ✓ QEMU 10.2.1 (1:10.2.1+ds-1ubuntu3.3) |
+| `qemu-img create -f qcow2` | ✓ |
+| `mke2fs -t ext4 -O quota,verity` | ✓ |
+| `virt` machine with AAVMF pflash, virtio-gpu, VNC on 127.0.0.1 | ✓ running after 15 s; serial shows `UEFI firmware (version 2025.11-3ubuntu7.3 …)` |
+
+Caveat: the `shell` user is not subject to the seccomp filter Android applies to app processes.
+glibc 2.43 uses newer syscalls (e.g. `clone3`) than musl did; on old kernels such as Android 9's
+4.9 these must fail with `ENOSYS`, not be killed by seccomp. The on-device install self-test
+detects this before the runtime is activated, and *Runtime › Run self-test* shows the raw output.
+
 ## Verified on a real Android ARM64 kernel (runtime 0.6, Alpine)
 
 Android 11 (API 30, kernel 5.4.86, arm64) booted headless on QEMU, serial shell as the unprivileged
