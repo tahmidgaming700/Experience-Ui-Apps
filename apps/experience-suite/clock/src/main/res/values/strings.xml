@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Clock</string>
+    <string name="tab_alarms">Alarms</string>
+    <string name="tab_clock">Clock</string>
+    <string name="tab_timer">Timer</string>
+    <string name="tab_stopwatch">Stopwatch</string>
+
+    <string name="alarm">Alarm</string>
+    <string name="add_alarm">Add alarm</string>
+    <string name="no_alarms">No alarms</string>
+    <string name="no_alarms_body">Tap + to set an alarm.</string>
+    <string name="no_upcoming_alarm">No alarms on</string>
+    <plurals name="rings_in_minutes">
+        <item quantity="one">Next alarm in %d minute</item>
+        <item quantity="other">Next alarm in %d minutes</item>
+    </plurals>
+    <string name="rings_in_hours">Next alarm in %1$d h %2$d min</string>
+    <string name="rings_in_days">Next alarm in %1$d d %2$d h</string>
+    <string name="alarm_switch">Alarm at %s</string>
+    <string name="change_time">Change time</string>
+    <string name="today">Today</string>
+    <string name="tomorrow">Tomorrow</string>
+    <string name="yesterday">Yesterday</string>
+    <string name="every_day">Every day</string>
+    <string name="weekdays">Weekdays</string>
+    <string name="weekends">Weekends</string>
+    <string name="label">Label</string>
+    <string name="no_label">No label</string>
+    <string name="sound">Alarm sound</string>
+    <string name="silent">Silent</string>
+    <string name="default_sound">Default alarm sound</string>
+    <string name="vibrate">Vibrate</string>
+    <string name="snooze_length">Snooze length</string>
+    <plurals name="minutes">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+    <plurals name="seconds">
+        <item quantity="one">%d second</item>
+        <item quantity="other">%d seconds</item>
+    </plurals>
+    <string name="delete">Delete</string>
+    <string name="expand">Show alarm options</string>
+    <string name="collapse">Hide alarm options</string>
+    <string name="on">On</string>
+    <string name="off">Off</string>
+    <string name="never">Never</string>
+    <string name="snooze">Snooze</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="snoozed_until">Snoozed until %s</string>
+    <string name="missed_alarm">Missed alarm</string>
+    <string name="alarm_set_for">Alarm set for %s</string>
+    <string name="alarm_dismissed">Alarm dismissed</string>
+    <string name="alarm_snoozed">Alarm snoozed</string>
+    <string name="no_alarm_found">No matching alarm</string>
+    <string name="no_alarm_ringing">No alarm is ringing</string>
+    <plurals name="alarms_dismissed">
+        <item quantity="one">%d alarm dismissed</item>
+        <item quantity="other">%d alarms dismissed</item>
+    </plurals>
+
+    <string name="settings">Settings</string>
+    <string name="done">Done</string>
+    <string name="auto_silence">Silence after</string>
+    <string name="default_snooze">Default snooze length</string>
+    <string name="volume_ramp">Gradually increase volume</string>
+    <string name="timer_sound">Timer sound</string>
+
+    <string name="add_city">Add city</string>
+    <string name="search_city">Search city or region</string>
+    <string name="hours_diff">%s h</string>
+    <string name="same_time">same time</string>
+    <string name="remove_city">Remove %s</string>
+
+    <string name="add_timer">Add timer</string>
+    <string name="start">Start</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="stop">Stop</string>
+    <string name="reset">Reset</string>
+    <string name="paused">Paused</string>
+    <string name="add_minute">+1:00</string>
+    <string name="delete_timer">Delete timer</string>
+    <string name="times_up">Time\'s up</string>
+    <string name="timer_name">%s timer</string>
+    <string name="timer_started">%s timer started</string>
+    <string name="paused_remaining">Paused · %s left</string>
+    <string name="timer_entry_description">%1$d hours, %2$d minutes, %3$d seconds</string>
+    <string name="backspace">Delete last digit</string>
+
+    <string name="lap">Lap</string>
+    <string name="lap_n">Lap %d</string>
+    <string name="total_time">Total %s</string>
+    <string name="fastest">Fastest</string>
+    <string name="slowest">Slowest</string>
+    <string name="paused_at">Paused at %s</string>
+
+    <string name="channel_alarm">Ringing alarms</string>
+    <string name="channel_timer">Running timers</string>
+    <string name="channel_timer_expired">Finished timers</string>
+    <string name="channel_stopwatch">Stopwatch</string>
+    <string name="channel_missed">Missed alarms</string>
+    <string name="channel_snooze">Snoozed alarms</string>
+</resources>

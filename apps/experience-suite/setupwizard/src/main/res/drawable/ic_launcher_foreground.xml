@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 108dp adaptive icon foreground: a rising sun over a horizon (first boot). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFD97A" android:pathData="M36,62a18,18 0,0 1,36 0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M30,64h48a3,3 0,0 1,0 6h-48a3,3 0,0 1,0 -6z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M52,30h4v8h-4zM32.5,40.3l2.8,-2.8 5.7,5.7 -2.8,2.8zM67,43.2l5.7,-5.7 2.8,2.8 -5.7,5.7z" />
+</vector>

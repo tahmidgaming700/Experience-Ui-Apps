@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Experience Files shares files from any mounted volume (internal storage under
+     /storage/emulated/N and removable volumes under /storage/XXXX-XXXX). -->
+<paths>
+    <external-path name="external" path="." />
+    <root-path name="storage" path="storage" />
+</paths>

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Calendar</string>
+    <string name="local_calendar_name">Experience</string>
+    <string name="permission_title">Calendar access needed</string>
+    <string name="permission_body">Calendar shows and edits the events stored on this device and in your synced accounts.</string>
+    <string name="view_month">Month</string>
+    <string name="view_agenda">Agenda</string>
+    <string name="view_day">Day</string>
+    <string name="today">Today</string>
+    <string name="go_to_today">Go to today</string>
+    <string name="calendars">Calendars</string>
+    <string name="no_calendars">No calendars on this device yet. Creating an event adds a local calendar.</string>
+    <string name="read_only">Read only</string>
+    <string name="new_event">New event</string>
+    <string name="edit_event">Edit event</string>
+    <string name="new_event_at">New event at %s</string>
+    <string name="untitled_event">(No title)</string>
+    <string name="all_day">All day</string>
+    <string name="repeating">Repeating event</string>
+    <string name="no_events">No events</string>
+    <string name="no_events_body">Nothing scheduled for this day.</string>
+    <string name="no_upcoming">Nothing coming up</string>
+    <plurals name="no_upcoming_body">
+        <item quantity="one">No events in the next %d day.</item>
+        <item quantity="other">No events in the next %d days.</item>
+    </plurals>
+    <string name="load_more">Show later events</string>
+    <plurals name="event_count">
+        <item quantity="one">%d event</item>
+        <item quantity="other">%d events</item>
+    </plurals>
+    <string name="save">Save</string>
+    <string name="edit">Edit</string>
+    <string name="delete">Delete</string>
+    <string name="field_title">Title</string>
+    <string name="field_location">Location</string>
+    <string name="field_description">Description</string>
+    <string name="section_when">When</string>
+    <string name="section_repeat">Repeat</string>
+    <string name="section_details">Details</string>
+    <string name="section_calendar">Calendar</string>
+    <string name="section_reminders">Reminders</string>
+    <string name="starts">Starts</string>
+    <string name="ends">Ends</string>
+    <string name="change_date">Date</string>
+    <string name="change_time">Time</string>
+    <string name="time_zone">Time zone</string>
+    <string name="search_time_zone">Search city or GMT offset</string>
+    <string name="choose_calendar">Choose calendar</string>
+    <string name="error_end_before_start">The event must end after it starts.</string>
+    <string name="repeat_none">Does not repeat</string>
+    <string name="repeat_daily">Every day</string>
+    <string name="repeat_weekdays">Every weekday (Mon–Fri)</string>
+    <string name="repeat_weekly">Every week on %s</string>
+    <string name="repeat_monthly_date">Every month on day %d</string>
+    <string name="repeat_monthly_weekday">Every month on the %1$s %2$s</string>
+    <string name="repeat_yearly">Every year on %s</string>
+    <string name="repeat_custom">Custom repeat (kept as is)</string>
+    <string name="repeat_ends">Ends</string>
+    <string name="repeat_forever">Never</string>
+    <plurals name="repeat_count">
+        <item quantity="one">After %d time</item>
+        <item quantity="other">After %d times</item>
+    </plurals>
+    <string name="repeat_until">On %s</string>
+    <string name="ordinal_1">first</string>
+    <string name="ordinal_2">second</string>
+    <string name="ordinal_3">third</string>
+    <string name="ordinal_4">fourth</string>
+    <string name="ordinal_last">last</string>
+    <string name="reminder_at_start">At start time</string>
+    <plurals name="reminder_minutes">
+        <item quantity="one">%d minute before</item>
+        <item quantity="other">%d minutes before</item>
+    </plurals>
+    <plurals name="reminder_hours">
+        <item quantity="one">%d hour before</item>
+        <item quantity="other">%d hours before</item>
+    </plurals>
+    <plurals name="reminder_days">
+        <item quantity="one">%d day before</item>
+        <item quantity="other">%d days before</item>
+    </plurals>
+    <plurals name="reminder_weeks">
+        <item quantity="one">%d week before</item>
+        <item quantity="other">%d weeks before</item>
+    </plurals>
+    <string name="add_reminder">Add reminder</string>
+    <string name="remove_reminder">Remove reminder</string>
+    <string name="edit_applies_to_series">Edits apply to every event in the series.</string>
+    <string name="delete_event_q">Delete event?</string>
+    <string name="delete_recurring_body">This is a repeating event.</string>
+    <string name="delete_this_event">Only this event</string>
+    <string name="delete_all_events">All events in the series</string>
+    <string name="event_missing">That event no longer exists</string>
+    <string name="error_no_calendar">Could not find or create a calendar to save events in.</string>
+    <string name="error_cannot_edit">This event can\'t be edited.</string>
+    <string name="error_save">The event could not be saved.</string>
+    <string name="channel_reminders">Event reminders</string>
+    <string name="channel_reminders_desc">Notifications for upcoming events</string>
+    <string name="dismiss">Dismiss</string>
+</resources>

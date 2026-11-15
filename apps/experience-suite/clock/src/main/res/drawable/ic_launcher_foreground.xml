@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Clock face with hands; inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFF4F1FF" android:pathData="M54,54m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0" />
+    <path android:fillColor="#FFB9C3FF" android:pathData="M54,33m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0M75,54m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0M54,75m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0M33,54m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+    <path android:fillColor="#FF4355B9" android:pathData="M51.5,54v-14a2.5,2.5 0,0 1,5 0v14z" />
+    <path android:fillColor="#FF2D2F45" android:pathData="M53,52.5l12,8a2,2 0,0 1,-2.2 3.3l-12,-8z" />
+    <path android:fillColor="#FFE8618C" android:pathData="M54,54m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
+</vector>

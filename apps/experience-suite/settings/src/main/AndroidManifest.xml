@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Theme keys in Settings.Secure, accessibility and notification toggles, location (priv-app / platform). -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <!-- Brightness, timeout, font scale, ringtones, sound toggles (Settings.System). -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <!-- IOverlayManager: accent colour, icon shape, font and navigation mode overlays. -->
+    <uses-permission android:name="android.permission.CHANGE_OVERLAY_PACKAGES" />
+    <!-- UiModeManager.setNightMode for the dark theme. -->
+    <uses-permission android:name="android.permission.MODIFY_DAY_NIGHT_MODE" />
+    <!-- PowerManager.setPowerSaveModeEnabled. -->
+    <uses-permission android:name="android.permission.DEVICE_POWER" />
+    <uses-permission android:name="android.permission.POWER_SAVER" />
+    <!-- Per-category storage usage (StorageStatsManager). -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Reading the connected Wi-Fi SSID requires location access on Android 11. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- System updates: manifest and image download. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:name=".SettingsApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Experience">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Opened by the ROM's patched AOSP Settings: About Experience UI. -->
+            <intent-filter>
+                <action android:name="com.experience.settings.action.ABOUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- "System update" entry points of the platform. -->
+            <intent-filter android:priority="1">
+                <action android:name="android.settings.SYSTEM_UPDATE_SETTINGS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Injects an "Experience" tile on the stock Settings homepage (AOSP tile injection;
+             honoured for system apps only). -->
+        <activity-alias
+            android:name=".ExperienceSettingsTile"
+            android:exported="true"
+            android:label="@string/tile_title"
+            android:targetActivity=".MainActivity">
+            <intent-filter android:priority="10">
+                <action android:name="com.android.settings.action.IA_SETTINGS" />
+            </intent-filter>
+            <meta-data
+                android:name="com.android.settings.category"
+                android:value="com.android.settings.category.ia.homepage" />
+            <meta-data
+                android:name="com.android.settings.title"
+                android:resource="@string/tile_title" />
+            <meta-data
+                android:name="com.android.settings.summary"
+                android:resource="@string/tile_summary" />
+            <meta-data
+                android:name="com.android.settings.icon"
+                android:resource="@drawable/ic_settings_tile" />
+        </activity-alias>
+    </application>
+</manifest>

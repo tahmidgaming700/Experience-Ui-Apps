@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Experience Settings</string>
+    <string name="tile_title">Experience</string>
+    <string name="tile_summary">Style, updates and Experience UI settings</string>
+</resources>
