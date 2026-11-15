@@ -1,0 +1,113 @@
+//
+// Experience UI applications.
+//
+// The APKs are built from apps/experience-suite by scripts/rom/collect-app-prebuilts.sh
+// (unsigned release builds) and copied here as <Module>/<Module>.apk. They are not
+// committed. The build re-signs every APK with the platform certificate.
+//
+// A missing APK fails the build: no Experience app is silently skipped.
+//
+
+android_app_import {
+    name: "ExperienceLauncher",
+    apk: "ExperienceLauncher/ExperienceLauncher.apk",
+    certificate: "platform",
+    privileged: true,
+    // Launcher3/Trebuchet stays installed: on Android 11 it provides the recents
+    // (overview) UI and gesture navigation, also for third-party home apps.
+}
+
+android_app_import {
+    name: "ExperienceSettings",
+    apk: "ExperienceSettings/ExperienceSettings.apk",
+    certificate: "platform",
+    privileged: true,
+    // The LineageOS Updater queries LineageOS download servers for official builds,
+    // which never lists Experience UI. Experience Settings provides System updates.
+    overrides: ["Updater"],
+}
+
+android_app_import {
+    name: "ExperienceSetupWizard",
+    apk: "ExperienceSetupWizard/ExperienceSetupWizard.apk",
+    certificate: "platform",
+    privileged: true,
+    overrides: ["LineageSetupWizard", "Provision"],
+}
+
+android_app_import {
+    name: "ExperienceDialer",
+    apk: "ExperienceDialer/ExperienceDialer.apk",
+    certificate: "platform",
+    privileged: true,
+    // LineageOS Dialer stays installed as an alternative DIALER role holder.
+}
+
+android_app_import {
+    name: "ExperienceMessages",
+    apk: "ExperienceMessages/ExperienceMessages.apk",
+    certificate: "platform",
+    privileged: true,
+    // AOSP Messaging stays installed: it can download/send MMS, which Experience
+    // Messages does not implement yet.
+}
+
+android_app_import {
+    name: "ExperienceContacts",
+    apk: "ExperienceContacts/ExperienceContacts.apk",
+    certificate: "platform",
+    overrides: ["Contacts"],
+}
+
+android_app_import {
+    name: "ExperienceNotes",
+    apk: "ExperienceNotes/ExperienceNotes.apk",
+    certificate: "platform",
+}
+
+android_app_import {
+    name: "ExperienceClock",
+    apk: "ExperienceClock/ExperienceClock.apk",
+    certificate: "platform",
+    overrides: ["DeskClock"],
+}
+
+android_app_import {
+    name: "ExperienceCalendar",
+    apk: "ExperienceCalendar/ExperienceCalendar.apk",
+    certificate: "platform",
+    overrides: ["Etar"],
+}
+
+android_app_import {
+    name: "ExperienceCalculator",
+    apk: "ExperienceCalculator/ExperienceCalculator.apk",
+    certificate: "platform",
+    overrides: ["ExactCalculator"],
+}
+
+android_app_import {
+    name: "ExperienceFiles",
+    apk: "ExperienceFiles/ExperienceFiles.apk",
+    certificate: "platform",
+    privileged: true,
+}
+
+android_app_import {
+    name: "ExperienceGallery",
+    apk: "ExperienceGallery/ExperienceGallery.apk",
+    certificate: "platform",
+    overrides: ["Gallery2"],
+}
+
+android_app_import {
+    name: "ExperienceCamera",
+    apk: "ExperienceCamera/ExperienceCamera.apk",
+    certificate: "platform",
+}
+
+android_app_import {
+    name: "ExperienceConverter",
+    apk: "ExperienceConverter/ExperienceConverter.apk",
+    certificate: "platform",
+}

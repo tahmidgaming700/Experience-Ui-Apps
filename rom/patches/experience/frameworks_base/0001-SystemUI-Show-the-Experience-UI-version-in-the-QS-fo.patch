@@ -1,0 +1,80 @@
+From 22dd47d0272d911b775c95468f563ce6c46432ce Mon Sep 17 00:00:00 2001
+From: Experience Build <build@experience.invalid>
+Date: Sun, 15 Nov 2026 16:29:27 +0000
+Subject: [PATCH] SystemUI: Show the Experience UI version in the QS footer
+
+Always identify the running Experience UI release in the expanded quick
+settings footer, using ro.experience.display.version. With developer
+options enabled, append the Android build ID as AOSP does.
+
+Builds without ro.experience.display.version keep the AOSP behaviour.
+---
+ .../res/values/experience_strings.xml         | 21 +++++++++++++++++++
+ .../com/android/systemui/qs/QSFooterImpl.java | 16 +++++++++++++-
+ 2 files changed, 36 insertions(+), 1 deletion(-)
+ create mode 100644 packages/SystemUI/res/values/experience_strings.xml
+
+diff --git a/packages/SystemUI/res/values/experience_strings.xml b/packages/SystemUI/res/values/experience_strings.xml
+new file mode 100644
+index 00000000..a8f134eb
+--- /dev/null
++++ b/packages/SystemUI/res/values/experience_strings.xml
+@@ -0,0 +1,21 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     Copyright (C) 2026 The Experience UI Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
++    <!-- Quick settings footer build text when developer options are enabled.
++         %1$s is the Experience UI display version, %2$s the Android build ID. -->
++    <string name="experience_qs_build_text_development"><xliff:g id="experience_version" example="Experience UI 1.0">%1$s</xliff:g> · <xliff:g id="build_id" example="RQ3A.211001.001">%2$s</xliff:g></string>
++</resources>
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/QSFooterImpl.java b/packages/SystemUI/src/com/android/systemui/qs/QSFooterImpl.java
+index 6e4ab9a3..91a0cfe8 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/QSFooterImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/qs/QSFooterImpl.java
+@@ -31,6 +31,7 @@ import android.net.Uri;
+ import android.os.Build;
+ import android.os.Bundle;
+ import android.os.Handler;
++import android.os.SystemProperties;
+ import android.os.UserHandle;
+ import android.os.UserManager;
+ import android.provider.Settings;
+@@ -166,7 +167,20 @@ public class QSFooterImpl extends FrameLayout implements QSFooter,
+ 
+     private void setBuildText() {
+         if (mBuildText == null) return;
+-        if (DevelopmentSettingsEnabler.isDevelopmentSettingsEnabled(mContext)) {
++        // Experience UI: always identify the OS release in the QS footer. With developer
++        // options enabled, the underlying Android build ID is appended for bug reports.
++        final String experienceVersion =
++                SystemProperties.get("ro.experience.display.version", "");
++        final boolean developmentEnabled =
++                DevelopmentSettingsEnabler.isDevelopmentSettingsEnabled(mContext);
++        if (!experienceVersion.isEmpty()) {
++            mBuildText.setText(developmentEnabled
++                    ? mContext.getString(R.string.experience_qs_build_text_development,
++                            experienceVersion, Build.ID)
++                    : experienceVersion);
++            mBuildText.setSelected(true);
++            mShouldShowBuildText = true;
++        } else if (developmentEnabled) {
+             mBuildText.setText(mContext.getString(
+                     com.android.internal.R.string.bugreport_status,
+                     Build.VERSION.RELEASE_OR_CODENAME,
+-- 
+2.43.0
+

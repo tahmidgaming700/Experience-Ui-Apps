@@ -1,0 +1,6 @@
+# Upstream patches (relative to lineage_patches_unified) that Experience UI does not apply.
+#
+# App signature spoofing (microG support) lets any app holding FAKE_PACKAGE_SIGNATURE
+# impersonate another package's signature. The Vanilla edition ships no microG, so this
+# only weakens the platform's package-signature guarantees.
+patches_treble_phh/platform_frameworks_base/0025-Add-support-for-app-signature-spoofing.patch

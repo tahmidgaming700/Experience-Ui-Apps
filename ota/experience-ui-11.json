@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "product": "Experience UI",
+  "android_version": "11",
+  "sdk": 30,
+  "channels": {
+    "stable": {
+      "version": "1.0.0",
+      "build_number": null,
+      "display": "Experience UI 1.0",
+      "date": null,
+      "variant": "arm64_bvN",
+      "url": null,
+      "size": null,
+      "sha256": null,
+      "changelog": "No stable build has been published. Stable releases require a recorded boot test on hardware.",
+      "boot_tested": false
+    },
+    "beta": {
+      "version": "1.0.0",
+      "build_number": null,
+      "display": "Experience UI 1.0",
+      "date": null,
+      "variant": "arm64_bvN",
+      "url": null,
+      "size": null,
+      "sha256": null,
+      "changelog": "No beta build has been published yet.",
+      "boot_tested": false
+    }
+  }
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2026 The Experience UI Project. Licensed under the Apache License, Version 2.0. -->
+<resources>
+    <color name="accent_device_default_light">#2E6C00</color>
+    <color name="accent_device_default_dark">#8DDA5E</color>
+</resources>

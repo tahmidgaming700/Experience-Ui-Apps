@@ -1,0 +1,7 @@
+#
+# Experience UI properties whose values contain spaces (appended to /system/build.prop).
+# Keep ro.experience.display.version in sync with EXPERIENCE_DISPLAY_VERSION in
+# version.mk; scripts/rom/check-tree.py enforces this.
+#
+ro.experience.display.version=Experience UI 1.0
+ro.experience.base=LineageOS 18.1 + TrebleDroid (Android 11)

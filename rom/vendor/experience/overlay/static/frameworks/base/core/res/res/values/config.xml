@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2026 The Experience UI Project. Licensed under the Apache License, Version 2.0. -->
+<!-- Experience UI framework defaults (Material 3 Expressive-inspired). Static overlay,
+     takes precedence over device/phh/treble/overlay and vendor/lineage/overlay. -->
+<resources>
+    <!-- Large, expressive corner radii. Android 11 SystemUI uses dialogCornerRadius
+         for notifications, the QS panel, the media player, dialogs and the power menu. -->
+    <dimen name="config_dialogCornerRadius">28dp</dimen>
+    <dimen name="config_bottomDialogCornerRadius">28dp</dimen>
+    <dimen name="config_buttonCornerRadius">20dp</dimen>
+    <dimen name="config_progressBarCornerRadius">1000dp</dimen>
+
+    <!-- Default adaptive icon shape: Experience squircle (superellipse). Can be
+         changed at runtime through the android.theme.customization.adaptive_icon_shape
+         overlays shipped with Experience UI. -->
+    <string name="config_icon_mask" translatable="false">"M50,0 C88,0 100,12 100,50 C100,88 88,100 50,100 C12,100 0,88 0,50 C0,12 12,0 50,0 Z"</string>
+    <bool name="config_useRoundIcon">false</bool>
+
+    <!-- Default role holders for the Experience communication apps. Users can change
+         them in Settings > Apps > Default apps; LineageOS Dialer and AOSP Messaging
+         remain installed. -->
+    <string name="config_defaultDialer" translatable="false">com.experience.dialer</string>
+    <string name="config_defaultSms" translatable="false">com.experience.messages</string>
+
+    <!-- Expressive typography: medium-weight headlines. -->
+    <string name="config_headlineFontFamilyMedium" translatable="false">sans-serif-medium</string>
+</resources>

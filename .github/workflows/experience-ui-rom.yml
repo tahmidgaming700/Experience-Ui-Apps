@@ -1,0 +1,154 @@
+name: Experience UI ROM (Android 11 GSI)
+
+# Full ROM build. A LineageOS 18.1 tree needs ~350 GB of disk, >= 32 GB RAM+swap and
+# many CPU hours, which GitHub-hosted runners do not provide, so the build runs on a
+# self-hosted runner labelled "experience-rom" (prepare it with
+# scripts/rom/setup-build-host.sh). scripts/rom/preflight.sh fails the job early if the
+# machine is too small; no stage is skipped silently.
+#
+# Release policy: builds are published only as DRAFT PRE-RELEASES. A build is never
+# marked stable or "latest" automatically; promoting it requires a recorded boot test
+# (see docs/compatibility.md) and a maintainer's decision.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Create a draft pre-release with the image"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "experience-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: experience-rom
+  cancel-in-progress: false
+
+env:
+  EXPERIENCE_TOP: ${{ vars.EXPERIENCE_TOP || '/srv/experience-src' }}
+
+jobs:
+  apps:
+    uses: ./.github/workflows/experience-ui-apps.yml
+
+  rom:
+    needs: apps
+    runs-on: [self-hosted, linux, x64, experience-rom]
+    timeout-minutes: 1440
+    outputs:
+      build_id: ${{ steps.id.outputs.build_id }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build ID
+        id: id
+        run: echo "build_id=$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight (disk, memory, CPUs, tools)
+        run: bash scripts/rom/preflight.sh
+
+      - name: Download Experience app APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: experience-apps-release
+          path: apps/experience-suite
+
+      - name: Sync Android 11 source tree
+        run: bash scripts/rom/sync.sh
+
+      - name: Install Experience app prebuilts
+        run: EXPERIENCE_SKIP_GRADLE=1 bash scripts/rom/collect-app-prebuilts.sh
+
+      - name: Privileged permission allowlist matches the APKs
+        run: |
+          set -euo pipefail
+          # aapt2 from the synced tree's prebuilts (no SDK needed on the build host).
+          aapt2="$EXPERIENCE_TOP/prebuilts/sdk/tools/linux/bin/aapt2"
+          [ -x "$aapt2" ] || aapt2="$(command -v aapt2)"
+          python3 -I scripts/rom/gen-privapp-permissions.py --check \
+            --bp rom/vendor/experience/prebuilt/apps/Android.bp \
+            --apks "$EXPERIENCE_TOP/vendor/experience/prebuilt/apps" \
+            --platform-manifest "$EXPERIENCE_TOP/frameworks/base/core/res/AndroidManifest.xml" \
+            --platform-manifest "$EXPERIENCE_TOP/lineage-sdk/lineage/res/AndroidManifest.xml" \
+            --aapt2 "$aapt2" \
+            --out rom/vendor/experience/permissions/privapp-permissions-experience.xml
+
+      - name: Apply GSI and Experience patches
+        run: bash scripts/rom/apply-patches.sh
+
+      - name: Check ROM tree against the synced sources
+        run: python3 -I scripts/rom/check-tree.py --upstream "$EXPERIENCE_TOP"
+
+      - name: Build system image
+        env:
+          EXPERIENCE_BUILD_ID: ${{ steps.id.outputs.build_id }}
+        run: bash scripts/rom/build.sh
+
+      - name: Verify system image (static checks, not a boot test)
+        run: |
+          python3 -I scripts/rom/verify-system-image.py out/dist/system.img \
+            --report out/dist/verification.json \
+            --expect-build-number "EXP1.0.0.${{ steps.id.outputs.build_id }}.userdebug"
+
+      - name: Package release assets
+        run: bash scripts/rom/package-release.sh
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-ui-${{ steps.id.outputs.build_id }}
+          path: out/release/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-ui-logs-${{ steps.id.outputs.build_id }}
+          path: |
+            out/logs/
+            out/dist/verification.json
+          if-no-files-found: ignore
+
+  release:
+    needs: rom
+    if: ${{ startsWith(github.ref, 'refs/tags/experience-v') || inputs.publish }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: experience-ui-${{ needs.rom.outputs.build_id }}
+          path: release
+      - name: Create draft pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_ID: ${{ needs.rom.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [[ "$GITHUB_REF_TYPE" != tag ]]; then tag="experience-ui-1.0.0-build-$BUILD_ID"; fi
+          python3 -I - release/build-info.json > notes.md <<'PY'
+          import json, sys
+          i = json.load(open(sys.argv[1]))
+          print(f"## {i['display_version']} ({i['build_number']})\n")
+          print(f"- Android {i['android_version']} (SDK {i['sdk']}), {i['target']}")
+          print(f"- Base: {i['base']} — LineageOS version string `{i['lineage_version']}`")
+          print(f"- Android security patch level: {i['android_security_patch']} (as built; not modified)")
+          print(f"- Edition: {i['edition']} (no Google apps)")
+          print(f"- Image SHA-256 (uncompressed): `{i['image']['uncompressed_sha256']}`")
+          print(f"- Static image checks: {'passed' if i['verification']['static_image_checks_passed'] else 'FAILED'} ({i['verification']['checks']} checks)")
+          print("\n**Not boot-tested.** This build passed static image validation only. "
+                "It has not been booted on any device by the release pipeline. Flash only on a "
+                "device you can recover; see docs/compatibility.md and the README.")
+          PY
+          gh release create "$tag" release/* --draft --prerelease \
+            --title "Experience UI 1.0 build $BUILD_ID (unverified pre-release)" \
+            --notes-file notes.md --target "$GITHUB_SHA"

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2026 The Experience UI Project. Licensed under the Apache License, Version 2.0. -->
+<resources>
+    <!-- Pill-shaped search bar on the Settings homepage. -->
+    <dimen name="search_bar_corner_radius">28dp</dimen>
+    <dimen name="rect_button_radius">20dp</dimen>
+</resources>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Experience UI local manifest (copied to .repo/local_manifests/ by scripts/rom/sync.sh).
+
+  Base: LineageOS 18.1 (Android 11), repo init -u https://github.com/LineageOS/android -b lineage-18.1
+  Treble/GSI layer: phhusson (TrebleDroid) Android 11 device and support repositories, pinned to
+  the exact commits that the AndyCGYan lineage-18.1 GSI patch sets were last validated against.
+
+  Vanilla edition: vendor/partner_gms (GApps) and vendor/magisk (su) are deliberately not synced.
+-->
+<manifest>
+  <remote name="experience-github" fetch="https://github.com/" />
+
+  <project name="phhusson/device_phh_treble" path="device/phh/treble"
+           remote="experience-github" revision="a4f61cfcbb4109e1a74fffa23a91704b6ccdac7a"
+           upstream="android-11.0" />
+  <project name="phhusson/vendor_hardware_overlay" path="vendor/hardware_overlay"
+           remote="experience-github" revision="51a175d0f5ad6dbb9817b43c752e001563b27bb9"
+           upstream="pie" />
+  <project name="phhusson/vendor_interfaces" path="vendor/interfaces"
+           remote="experience-github" revision="c79b16d7ffabec1390a272d8d51b18b7d1a75349"
+           upstream="android-11.0" />
+  <project name="phhusson/vendor_vndk-tests" path="vendor/vndk-tests"
+           remote="experience-github" revision="533390a1d6bc98d86de6b9aab56825c1f03fddcb"
+           upstream="master" />
+</manifest>

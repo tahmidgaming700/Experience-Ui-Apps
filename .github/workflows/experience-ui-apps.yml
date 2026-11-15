@@ -1,0 +1,136 @@
+name: Experience UI apps and ROM checks
+
+# Runs on GitHub-hosted runners (cheap, every change):
+#   apps        build, unit-test and lint the 14 Experience apps; upload unsigned release APKs
+#   privapp     check that rom/vendor/experience/permissions/privapp-permissions-experience.xml
+#               matches what the privileged APKs actually request
+#   rom-static  ROM script tests, patch stack applied to real LineageOS 18.1 projects,
+#               ROM tree consistency + overlay resources checked against upstream
+# Also callable from experience-ui-rom.yml, which needs the APK artifact.
+
+on:
+  push:
+    paths:
+      - "apps/experience-suite/**"
+      - "rom/**"
+      - "scripts/rom/**"
+      - "tests/rom/**"
+      - "ota/**"
+      - ".github/workflows/experience-ui-apps.yml"
+  pull_request:
+    paths:
+      - "apps/experience-suite/**"
+      - "rom/**"
+      - "scripts/rom/**"
+      - "tests/rom/**"
+      - "ota/**"
+      - ".github/workflows/experience-ui-apps.yml"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  SUITE: apps/experience-suite
+  LINEAGE_RAW: https://raw.githubusercontent.com/LineageOS
+
+jobs:
+  apps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > "$SUITE/local.properties"
+
+      - name: Unit tests
+        working-directory: ${{ env.SUITE }}
+        run: ./gradlew --no-daemon --console=plain testDebugUnitTest
+
+      - name: Lint
+        working-directory: ${{ env.SUITE }}
+        run: ./gradlew --no-daemon --console=plain lintDebug
+
+      - name: Release APKs (unsigned; the ROM build re-signs them with the platform key)
+        working-directory: ${{ env.SUITE }}
+        run: ./gradlew --no-daemon --console=plain assembleRelease
+
+      - name: Check every app produced an APK
+        run: |
+          set -euo pipefail
+          n=0
+          for m in launcher settings setupwizard dialer messages contacts notes clock calendar calculator files gallery camera converter; do
+            apk="$SUITE/$m/build/outputs/apk/release/$m-release-unsigned.apk"
+            test -f "$apk" || { echo "::error::missing $apk"; exit 1; }
+            n=$((n+1))
+          done
+          echo "$n release APKs"
+
+      - name: Upload release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-apps-release
+          path: ${{ env.SUITE }}/*/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-apps-reports
+          path: |
+            ${{ env.SUITE }}/*/build/reports/
+            ${{ env.SUITE }}/*/build/test-results/
+          if-no-files-found: ignore
+
+  privapp:
+    runs-on: ubuntu-24.04
+    needs: apps
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: experience-apps-release
+          path: ${{ env.SUITE }}
+      - name: Privileged permission allowlist is up to date
+        run: |
+          set -euo pipefail
+          curl -fsSL "$LINEAGE_RAW/android_frameworks_base/lineage-18.1/core/res/AndroidManifest.xml" -o /tmp/framework-manifest.xml
+          curl -fsSL "$LINEAGE_RAW/android_lineage-sdk/lineage-18.1/lineage/res/AndroidManifest.xml" -o /tmp/lineage-sdk-manifest.xml
+          EXPERIENCE_SKIP_GRADLE=1 bash scripts/rom/collect-app-prebuilts.sh /tmp/prebuilts
+          python3 -I scripts/rom/gen-privapp-permissions.py --check \
+            --bp rom/vendor/experience/prebuilt/apps/Android.bp --apks /tmp/prebuilts \
+            --platform-manifest /tmp/framework-manifest.xml --platform-manifest /tmp/lineage-sdk-manifest.xml \
+            --aapt2 "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt2" \
+            --out rom/vendor/experience/permissions/privapp-permissions-experience.xml
+
+  rom-static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get install -y -qq e2fsprogs libxml2-utils shellcheck > /dev/null
+      - name: Shell scripts
+        run: shellcheck -x -S warning scripts/rom/*.sh
+      - name: ROM script tests
+        run: python3 -m unittest discover -s tests/rom -v
+      - name: Patch stack applies to LineageOS 18.1 (frameworks/base, Settings, Trebuchet)
+        run: bash scripts/rom/check-patches.sh "$RUNNER_TEMP/patch-check"
+      - name: ROM tree consistency and overlay resources
+        run: python3 -I scripts/rom/check-tree.py --upstream "$RUNNER_TEMP/patch-check"
