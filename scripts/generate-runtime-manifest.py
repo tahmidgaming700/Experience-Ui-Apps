@@ -22,17 +22,17 @@ import tarfile
 SCHEMA_VERSION = 2
 KIND = "experience-virtual-os-runtime"
 ENTRYPOINTS = {
-    "shell": "rootfs/bin/sh",
+    "shell": "rootfs/usr/bin/sh",
     "qemuSystemAarch64": "rootfs/usr/bin/qemu-system-aarch64",
     "qemuImg": "rootfs/usr/bin/qemu-img",
-    "uefiFirmware": "rootfs/usr/share/qemu/edk2-aarch64-code.fd",
-    "uefiVars": "rootfs/usr/share/qemu/edk2-arm-vars.fd",
-    "mke2fs": "rootfs/sbin/mke2fs",
+    "uefiFirmware": "rootfs/usr/share/AAVMF/AAVMF_CODE.fd",
+    "uefiVars": "rootfs/usr/share/AAVMF/AAVMF_VARS.fd",
+    "mke2fs": "rootfs/usr/sbin/mke2fs",
 }
 REQUIRED = list(ENTRYPOINTS.values()) + [
     "runtime-info.json",
-    "rootfs/lib/ld-musl-aarch64.so.1",
-    "rootfs/etc/apk/keys",
+    "rootfs/usr/lib/ld-linux-aarch64.so.1",
+    "rootfs/etc/os-release",
 ]
 # Capability levels are fixed by what has been verified for this runtime
 # design; see docs/experience-virtual-os-guest-compatibility.md.
@@ -42,7 +42,7 @@ CAPABILITIES = {
     "androidGuest": "experimental-console-only",
 }
 NOTES = (
-    "Alpine Linux ARM64 userspace with Alpine's musl-linked QEMU, run under PRoot "
+    "Ubuntu ARM64 userspace with Ubuntu's glibc-linked QEMU, run under PRoot "
     "from the app. QEMU uses TCG software emulation unless /dev/kvm is usable. "
     "This is not the Android Emulator: Android system images run on QEMU's generic "
     "'virt' machine without goldfish/ranchu devices or host GPU acceleration, so "

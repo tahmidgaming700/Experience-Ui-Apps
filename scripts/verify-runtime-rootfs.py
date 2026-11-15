@@ -4,7 +4,7 @@
 Checks, without executing anything:
   * required files exist (shell, QEMU, qemu-img, UEFI firmware);
   * every required executable is an ELF64 little-endian AArch64 binary;
-  * its program interpreter is the musl loader present in the rootfs;
+  * its program interpreter is the glibc AArch64 loader present in the rootfs;
   * every DT_NEEDED library resolves inside the rootfs (transitively).
 
 Usage: verify-runtime-rootfs.py <rootfs>
@@ -14,18 +14,21 @@ import struct
 import sys
 
 REQUIRED_EXECUTABLES = [
-    "bin/busybox",
+    "usr/bin/dash",
     "usr/bin/qemu-system-aarch64",
     "usr/bin/qemu-img",
-    "sbin/mke2fs",
+    "usr/sbin/mke2fs",
 ]
 REQUIRED_FILES = [
     "bin/sh",
-    "lib/ld-musl-aarch64.so.1",
-    "etc/apk/keys",
-    "usr/share/qemu/edk2-aarch64-code.fd",
+    "usr/lib/ld-linux-aarch64.so.1",
+    "usr/share/keyrings/ubuntu-archive-keyring.gpg",
+    "usr/share/AAVMF/AAVMF_CODE.fd",
+    "usr/share/AAVMF/AAVMF_VARS.fd",
 ]
-LIB_DIRS = ["lib", "usr/lib"]
+INTERPRETER = "/lib/ld-linux-aarch64.so.1"
+# glibc's default search path plus Ubuntu's multiarch directories (ld.so.conf.d).
+LIB_DIRS = ["usr/lib/aarch64-linux-gnu", "lib/aarch64-linux-gnu", "usr/lib", "lib", "usr/local/lib/aarch64-linux-gnu"]
 EM_AARCH64 = 183
 PT_INTERP = 3
 PT_DYNAMIC = 2
@@ -148,16 +151,11 @@ def main():
         if machine != EM_AARCH64:
             errors.append(f"/{rel}: e_machine {machine}, expected AArch64 ({EM_AARCH64})")
         if interp:
-            if interp != "/lib/ld-musl-aarch64.so.1":
-                errors.append(f"/{rel}: unexpected interpreter {interp} (glibc binaries cannot run here)")
+            if interp != INTERPRETER:
+                errors.append(f"/{rel}: unexpected interpreter {interp}, expected {INTERPRETER}")
             elif not os.path.isfile(resolve(root, interp)):
                 errors.append(f"/{rel}: interpreter {interp} missing")
         for lib in needed:
-            if lib == "libc.musl-aarch64.so.1":
-                lib_host = resolve(root, "lib/ld-musl-aarch64.so.1")
-                if not os.path.isfile(lib_host):
-                    errors.append(f"/{rel}: needs {lib}, missing")
-                continue
             found = find_library(root, lib)
             if found is None:
                 errors.append(f"/{rel}: needs {lib}, not found in rootfs")

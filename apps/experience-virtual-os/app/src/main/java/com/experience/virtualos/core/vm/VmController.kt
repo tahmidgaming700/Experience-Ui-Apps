@@ -94,7 +94,7 @@ class VmController(
                     }
                     val vars = File(dir, "efivars.fd")
                     if (!vars.isFile) {
-                        val template = File(runtimeDir, manifest.entrypoints["uefiVars"] ?: "rootfs/usr/share/qemu/edk2-arm-vars.fd")
+                        val template = File(runtimeDir, manifest.entrypoints["uefiVars"] ?: throw IOException("This runtime has no UEFI variable store; update the runtime."))
                         if (!template.isFile) throw IOException("UEFI variable store template is missing from the runtime.")
                         FileUtils.copy(template, vars)
                     }

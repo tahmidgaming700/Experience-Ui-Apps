@@ -188,7 +188,7 @@ private fun ExpectationsStep(arm64: Boolean) {
     Headline("What to expect", "Straight answers before you download anything.")
     SectionCard {
         Capability(Icons.Outlined.CheckCircle, Tone.GOOD, "Linux ARM64 virtual machines",
-            "Boot ARM64 installer or live ISOs (Alpine, Debian, Ubuntu Server…) with UEFI, a virtual disk, networking and a touch-controlled display. Verified with Alpine Linux; still experimental on phones.")
+            "Boot ARM64 installer or live ISOs (Ubuntu Server, Debian, Alpine…) with UEFI, a virtual disk, networking and a touch-controlled display. Verified with Alpine Linux; still experimental on phones.")
         Capability(Icons.Outlined.WarningAmber, Tone.WARN, "Android system images — experimental, console only",
             "Google's Android 11 image starts its kernel and system services, but cannot show a screen: its graphics need the Android Emulator's goldfish pipe, which QEMU on a phone cannot provide.")
         Capability(Icons.Outlined.Block, Tone.BAD, "Not a second Android with apps",
@@ -207,7 +207,7 @@ private fun RuntimeStep(vm: AppViewModel) {
     val pickArchive = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { a -> if (a != null) { picked = a; pickManifest.launch(arrayOf("application/json", "*/*")) } }
 
     LaunchedEffect(Unit) { if (runtime.remote is RemoteManifestState.Unknown) vm.checkForRuntime() }
-    Headline("Install the runtime", "The runtime is a verified Alpine Linux ARM64 environment with QEMU, downloaded separately from GitHub Releases (about 35 MB, 240 MB installed).")
+    Headline("Install the runtime", "The runtime is a verified Ubuntu ARM64 environment with QEMU. It is included in this app and also published on GitHub Releases.")
     val t = task
     when {
         runtime.installed != null && runtime.problems.isEmpty() -> Notice("Runtime ${runtime.installed!!.runtimeVersion} is installed and verified.", Tone.GOOD)

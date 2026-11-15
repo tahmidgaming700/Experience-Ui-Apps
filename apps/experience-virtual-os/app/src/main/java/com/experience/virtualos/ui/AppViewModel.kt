@@ -180,10 +180,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val problems = launcher.check()
             if (problems.isNotEmpty()) error(problems.joinToString("\n"))
             val rootfs = File(dir, "rootfs")
-            val (c1, o1) = launcher.run(rootfs, listOf("/bin/sh", "-c", "cat /etc/alpine-release; uname -m"), 60)
-            val (c2, o2) = launcher.run(rootfs, listOf("/usr/bin/qemu-system-aarch64", "--version"), 120)
+            val manifest = g.runtimeInstaller.current()?.manifest ?: error("No runtime is installed.")
+            val qemu = "/" + manifest.qemuEntrypoint.removePrefix("rootfs/")
+            val (c1, o1) = launcher.run(rootfs, listOf("/bin/sh", "-c", ". /etc/os-release; echo \"\$PRETTY_NAME\"; uname -m; ldd --version 2>/dev/null | head -1"), 60)
+            val (c2, o2) = launcher.run(rootfs, listOf(qemu, "--version"), 120)
             val ok = c1 == 0 && c2 == 0 && o2.contains("QEMU emulator version")
-            (if (ok) "PASSED\n\n" else "FAILED\n\n") + "Alpine (exit $c1):\n${o1.trim()}\n\nQEMU (exit $c2):\n${o2.trim()}"
+            (if (ok) "PASSED\n\n" else "FAILED\n\n") + "Userspace (exit $c1):\n${o1.trim()}\n\nQEMU (exit $c2):\n${o2.trim()}"
         } catch (e: Exception) {
             "FAILED\n\n${e.message ?: e}"
         }.also { g.activityLog.add(if (it.startsWith("PASSED")) com.experience.virtualos.core.log.LogLevel.SUCCESS else com.experience.virtualos.core.log.LogLevel.ERROR, "Runtime", "Self-test: ${it.take(300)}") }

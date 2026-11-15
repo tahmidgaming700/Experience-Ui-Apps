@@ -4,7 +4,7 @@ import com.experience.virtualos.core.images.ImageLayout
 
 /**
  * Pure construction of QEMU argument vectors. Every path given here is a
- * *guest* path (as seen inside the Alpine root under PRoot).
+ * *guest* path (as seen inside the Ubuntu root under PRoot).
  *
  * The Android profile reproduces the disk topology the AOSP emulator images
  * expect, verified by booting the API 30 image on upstream QEMU:

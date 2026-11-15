@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * How far an Android system image is known to get on this runtime
- * (Alpine QEMU, generic `virt` machine, no goldfish/ranchu devices).
+ * (Ubuntu QEMU, generic `virt` machine, no goldfish/ranchu devices).
  */
 @Serializable
 enum class SupportLevel(val label: String, val explanation: String) {

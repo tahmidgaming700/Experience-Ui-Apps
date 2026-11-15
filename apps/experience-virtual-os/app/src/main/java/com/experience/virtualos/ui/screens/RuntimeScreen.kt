@@ -60,7 +60,7 @@ fun RuntimeScreen(vm: AppViewModel, padding: PaddingValues) {
         item {
             Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
                 Text("Runtime", style = MaterialTheme.typography.headlineMedium)
-                Text("Alpine Linux ARM64 userspace with QEMU, executed through PRoot from the APK. Installed atomically into app-private storage.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Ubuntu ARM64 userspace with QEMU, executed through PRoot from the APK. Installed atomically into app-private storage.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         val t = task

@@ -1,12 +1,15 @@
 name: Build Experience Virtual OS
 
 # Three jobs:
-#   runtime  - builds base.tar.gz from pinned Alpine inputs, verifies ELF
-#              closure, smoke-tests QEMU under qemu-user, writes manifest.json
+#   runtime  - builds base.tar.gz from the pinned Ubuntu base on a native ARM64
+#              runner, verifies ELF closure, smoke-tests QEMU through PRoot,
+#              writes manifest.json
 #   android  - builds and tests the APK (unit + Robolectric UI tests, lint),
 #              extracts the real runtime archive in a test, inspects the APK
-#   release  - tags only: assembles a DRAFT GitHub Release from the verified
-#              artifacts. A maintainer publishes it after testing on a device.
+#   release  - tags only: publishes a GitHub Release from the verified
+#              artifacts (APK with bundled runtime, base.tar.gz, SHA256SUMS,
+#              manifest.json) and marks it latest, so the app's manifest URL
+#              resolves.
 
 on:
   workflow_dispatch:
@@ -36,7 +39,7 @@ env:
 
 jobs:
   runtime:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
       - name: Check out source
@@ -45,8 +48,8 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-user patchelf binutils
-          qemu-aarch64 --version | head -1
+          sudo apt-get install -y -qq proot
+          uname -m
 
       - name: Build runtime archive
         run: sudo -E bash scripts/build-experience-virtual-os-runtime.sh runtime-dist
@@ -58,7 +61,7 @@ jobs:
           VERSION="$(cat scripts/experience-virtual-os-runtime-version)"
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then TAG="${GITHUB_REF_NAME}"; else TAG="runtime-v${VERSION}-ci.${GITHUB_RUN_NUMBER}"; fi
           python3 -I scripts/generate-runtime-manifest.py --dist runtime-dist --repo "${GITHUB_REPOSITORY}" \
-            --tag "$TAG" --min-app-version-code 6
+            --tag "$TAG" --min-app-version-code 7
           (cd runtime-dist && sha256sum -c SHA256SUMS)
 
       - name: Upload runtime artifact
@@ -145,7 +148,10 @@ jobs:
 
       - name: Build debug and release APKs
         working-directory: ${{ env.APP_DIR }}
-        run: ./gradlew --no-daemon assembleDebug assembleRelease
+        run: |
+          ./gradlew --no-daemon assembleDebug
+          # The release APK carries the verified runtime for offline installation.
+          ./gradlew --no-daemon assembleRelease -PbundleRuntime="$GITHUB_WORKSPACE/runtime-dist"
 
       - name: Inspect APKs
         run: |
@@ -157,12 +163,21 @@ jobs:
           AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           "$AAPT2" dump badging "$RELEASE" | grep -E "^package: name='com.experience.virtualos'"
           "$AAPT2" dump badging "$RELEASE" | grep -E "^(package|sdkVersion|targetSdkVersion|native-code|uses-permission)"
-          if [[ "${{ steps.signing.outputs.ready }}" == "true" ]]; then
-            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$RELEASE"
-          fi
           mkdir -p apk-dist
           cp "$OUT/debug/app-debug.apk" apk-dist/experience-virtual-os-debug.apk
-          cp "$RELEASE" "apk-dist/experience-virtual-os-release$([[ "${{ steps.signing.outputs.ready }}" == "true" ]] || echo -unsigned).apk"
+          if [[ "${{ steps.signing.outputs.ready }}" == "true" ]]; then
+            cp "$RELEASE" apk-dist/experience-virtual-os-release.apk
+          else
+            # No release key configured: sign with this run's debug key so the
+            # APK is at least installable. It cannot update an APK signed with
+            # a different key.
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks "$HOME/.android/debug.keystore" \
+              --ks-pass pass:android --ks-key-alias androiddebugkey \
+              --out apk-dist/experience-virtual-os-release-ci-debugkey.apk "$RELEASE"
+          fi
+          for apk in apk-dist/experience-virtual-os-release*.apk; do
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk"
+          done
           (cd apk-dist && sha256sum *.apk | tee APK-SHA256SUMS)
 
       - name: Upload APKs
@@ -210,12 +225,12 @@ jobs:
           caps = "\n".join(f"| {k} | {v} |" for k, v in m["capabilities"].items())
           notes = f"""## Experience Virtual OS {m['releaseTag']}
 
-          **Draft — publish only after testing on an ARM64 Android device.**
+          **Status:** built and verified in CI (unit + UI tests, runtime ELF/library checks, QEMU smoke test, APK inspection). Not yet verified on a physical phone.
 
           ### Assets
           | File | Purpose |
           |---|---|
-          | `experience-virtual-os-release*.apk` | Android app (arm64-v8a, Android 9+) |
+          | `experience-virtual-os-release*.apk` | Android app (arm64-v8a, Android 9+) with the runtime included ("Install included runtime"). A `-ci-debugkey` name means no release key was configured. |
           | `base.tar.gz` | Runtime: {m['components']['userspace']} ({m['components']['libc']}) + QEMU {m['components']['qemu']} |
           | `SHA256SUMS` | SHA-256 of base.tar.gz |
           | `manifest.json` | Runtime manifest (schema {m['schemaVersion']}) read by the app |
@@ -239,10 +254,12 @@ jobs:
           pathlib.Path("../release-notes.md").write_text(notes)
           PY
 
-      - name: Create draft release
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: false
+          prerelease: false
+          make_latest: "true"
           name: Experience Virtual OS ${{ github.ref_name }}
           body_path: dist/release-notes.md
           fail_on_unmatched_files: true

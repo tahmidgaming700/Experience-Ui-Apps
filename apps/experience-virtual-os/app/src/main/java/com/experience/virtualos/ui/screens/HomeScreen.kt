@@ -80,7 +80,7 @@ fun HomeScreen(
                     t != null && t.running -> ProgressBlock(t.stage, t.done, t.total)
                     runtime.installed == null -> {
                         Text("Runtime not installed", style = MaterialTheme.typography.titleLarge)
-                        Text("Virtual devices need the Alpine + QEMU runtime from GitHub Releases.", style = MaterialTheme.typography.bodyMedium)
+                        Text("Virtual devices need the Ubuntu + QEMU runtime (included in the app or from GitHub Releases).", style = MaterialTheme.typography.bodyMedium)
                         Button(onClick = openRuntime) { Text("Set up runtime") }
                     }
                     else -> {

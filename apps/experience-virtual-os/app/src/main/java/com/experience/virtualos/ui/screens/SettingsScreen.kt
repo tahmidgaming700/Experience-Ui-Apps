@@ -139,7 +139,7 @@ fun SettingsScreen(vm: AppViewModel, padding: PaddingValues, restartSetup: () ->
 
         item {
             SectionCard(eyebrow = "About") {
-                Text("Experience Virtual OS runs QEMU (GPL-2.0) inside an Alpine Linux userspace under PRoot (GPL-2.0, Termux build). Android system images are downloaded from Google under the Android SDK licence. Source and build scripts: github.com/tahmidgaming700/Experience-Ui-Apps.", style = MaterialTheme.typography.bodySmall)
+                Text("Experience Virtual OS runs QEMU (GPL-2.0) inside an Ubuntu userspace under PRoot (GPL-2.0, Termux build). Android system images are downloaded from Google under the Android SDK licence. Source and build scripts: github.com/tahmidgaming700/Experience-Ui-Apps.", style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = restartSetup) { Text("Run setup again") }
             }
         }

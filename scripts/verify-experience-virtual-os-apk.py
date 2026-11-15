@@ -96,6 +96,17 @@ def main():
                 if n not in SYSTEM_LIBS and n not in bundled:
                     errors.append(f"{lib} needs {n}, which is not bundled")
             print(f"ok  {path:36} {len(data):>8} bytes  needs {', '.join(needed) or '-'}")
+        if "assets/runtime/base-runtime.bin" in names:
+            import hashlib, json
+            manifest = json.loads(z.read("assets/runtime/manifest.json"))
+            h = hashlib.sha256()
+            with z.open("assets/runtime/base-runtime.bin") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+            if h.hexdigest() != manifest["archive"]["sha256"]:
+                errors.append("bundled runtime does not match its manifest SHA-256")
+            else:
+                print(f"ok  bundled runtime {manifest['runtimeVersion']} ({manifest['components'].get('userspace')}) sha256 {h.hexdigest()[:16]}…")
         for n in names:
             if any(n.startswith(p) for p in FORBIDDEN_PREFIXES):
                 errors.append(f"runtime payload must not be bundled in the APK: {n}")

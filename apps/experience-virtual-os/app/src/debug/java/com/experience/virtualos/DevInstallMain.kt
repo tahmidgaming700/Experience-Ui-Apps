@@ -46,10 +46,10 @@ object DevInstallMain {
         val disk = File(dev, "disk.qcow2")
         val (c1, o1) = launcher.run(rootfs, listOf("/usr/bin/qemu-img", "create", "-f", "qcow2", ProotLauncher.guestPath(dataDir, disk), "2G"))
         println("qemu-img exit=$c1 ${o1.trim()}")
-        File(runtimeDir, "rootfs/usr/share/qemu/edk2-arm-vars.fd").copyTo(File(dev, "efivars.fd"), overwrite = true)
+        File(runtimeDir, installer.current()!!.manifest.entrypoints.getValue("uefiVars")).copyTo(File(dev, "efivars.fd"), overwrite = true)
         val device = VirtualDevice(id = "dev1", name = "Test", kind = GuestKind.LINUX_ARM64, memoryMb = 512, cpuCores = 1, createdAtMillis = 0, updatedAtMillis = 0)
         val argv = QemuCommandBuilder.build(device, QemuCommandBuilder.Paths(
-            qemu = "/usr/bin/qemu-system-aarch64", firmwareCode = "/usr/share/qemu/edk2-aarch64-code.fd",
+            qemu = "/usr/bin/qemu-system-aarch64", firmwareCode = "/" + installer.current()!!.manifest.entrypoints.getValue("uefiFirmware").removePrefix("rootfs/"),
             firmwareVars = ProotLauncher.guestPath(dataDir, File(dev, "efivars.fd")), systemDisk = ProotLauncher.guestPath(dataDir, disk),
             installMedia = null, serialLog = ProotLauncher.guestPath(dataDir, File(dev, "serial.log")),
         ), QemuCommandBuilder.Ports(17, 44417), useKvm = false, tcgThreads = 1)

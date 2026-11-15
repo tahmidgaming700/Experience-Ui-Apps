@@ -5,11 +5,11 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * Builds and starts processes inside the Alpine runtime using the Bionic PRoot
+ * Builds and starts processes inside the Ubuntu runtime using the Bionic PRoot
  * shipped in the APK's native library directory.
  *
  * Host side (Android/Bionic):   nativeLibraryDir/libproot.so (+ loader, talloc)
- * Guest side (Linux/musl):      <runtime>/rootfs/...
+ * Guest side (Linux/glibc):      <runtime>/rootfs/...
  *
  * App storage is bound into the guest at [GUEST_DATA], so QEMU can open
  * device disks and images with stable guest paths.

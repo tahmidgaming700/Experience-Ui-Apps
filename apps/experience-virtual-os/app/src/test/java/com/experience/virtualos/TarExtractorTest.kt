@@ -94,9 +94,12 @@ class TarExtractorTest {
         val dest = tmp.newFolder("runtime")
         val result = TarExtractor().extractGzip(File(path!!), dest)
         assertTrue(result.files > 100)
-        assertTrue(Files.isSymbolicLink(File(dest, "rootfs/bin/sh").toPath()))
+        // Ubuntu merged-/usr layout: /bin -> usr/bin, /usr/bin/sh -> dash.
+        assertTrue(Files.isSymbolicLink(File(dest, "rootfs/bin").toPath()))
+        assertTrue(Files.isSymbolicLink(File(dest, "rootfs/usr/bin/sh").toPath()))
         assertTrue(File(dest, "rootfs/usr/bin/qemu-system-aarch64").canExecute())
-        assertTrue(File(dest, "rootfs/lib/ld-musl-aarch64.so.1").exists())
+        assertTrue(File(dest, "rootfs/usr/lib/ld-linux-aarch64.so.1").exists())
+        assertTrue(File(dest, "rootfs/usr/share/AAVMF/AAVMF_CODE.fd").isFile)
         assertTrue(File(dest, "runtime-info.json").readText().contains("qemu"))
     }
 }
