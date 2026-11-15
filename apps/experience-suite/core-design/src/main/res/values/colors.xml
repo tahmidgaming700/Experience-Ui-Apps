@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="experience_window_background">#FFFBF8FF</color>
+    <color name="experience_brand_seed">#FF4355B9</color>
+    <bool name="experience_light_bars">true</bool>
+</resources>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window theme for every Experience activity. Compose draws the content; this
+         theme supplies the pre-draw window background, edge-to-edge bars and the
+         Material 3 attributes used by any platform dialog the app shows. -->
+    <style name="Theme.Experience" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/experience_window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">@bool/experience_light_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/experience_light_bars</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+
+    <!-- Wallpaper-backed variant for the launcher. -->
+    <style name="Theme.Experience.Wallpaper" parent="Theme.Experience">
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>
