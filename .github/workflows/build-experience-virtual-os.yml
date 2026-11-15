@@ -170,7 +170,11 @@ jobs:
             # No release key configured: sign with this run's debug key so the
             # APK is at least installable. It cannot update an APK signed with
             # a different key.
-            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks "$HOME/.android/debug.keystore" \
+            CI_KS="$RUNNER_TEMP/ci-debug.jks"
+            keytool -genkeypair -keystore "$CI_KS" -storetype PKCS12 -alias androiddebugkey \
+              -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 3650 \
+              -dname "CN=Experience Virtual OS CI (not a release key)" > /dev/null
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks "$CI_KS" \
               --ks-pass pass:android --ks-key-alias androiddebugkey \
               --out apk-dist/experience-virtual-os-release-ci-debugkey.apk "$RELEASE"
           fi
