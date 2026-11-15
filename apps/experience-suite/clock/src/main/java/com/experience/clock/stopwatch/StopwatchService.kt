@@ -91,7 +91,7 @@ class StopwatchService : Service() {
                 .setContentIntent(open)
                 .setOnlyAlertOnce(true)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .setCategory(Notification.CATEGORY_STOPWATCH)
+                .setCategory(Notification.CATEGORY_PROGRESS)
             fun act(action: String, title: Int) = Notification.Action.Builder(null, context.getString(title), pi(context, action)).build()
             if (s.running) {
                 b.setUsesChronometer(true).setShowWhen(true).setWhen(System.currentTimeMillis() - elapsed).setOngoing(true)

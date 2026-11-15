@@ -1,7 +1,6 @@
 package com.experience.settings
 
 import android.content.Intent
-import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -37,11 +36,13 @@ class MainActivity : ExperienceActivity() {
     companion object {
         const val ACTION_ABOUT = "com.experience.settings.action.ABOUT"
         const val EXTRA_PAGE = "com.experience.settings.extra.PAGE"
+        /** Settings.ACTION_SYSTEM_UPDATE_SETTINGS (a hidden constant). */
+        const val ACTION_SYSTEM_UPDATE = "android.settings.SYSTEM_UPDATE_SETTINGS"
     }
 
     private fun initialPage(): Page? = when (intent?.action) {
         ACTION_ABOUT -> Page.ABOUT
-        Settings.ACTION_SYSTEM_UPDATE_SETTINGS -> Page.UPDATES
+        ACTION_SYSTEM_UPDATE -> Page.UPDATES
         else -> intent?.getStringExtra(EXTRA_PAGE)?.let { n -> Page.entries.firstOrNull { it.name == n } }
     }
 

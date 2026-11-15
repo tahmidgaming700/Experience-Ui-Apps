@@ -86,7 +86,7 @@
     <string name="timer_name">%s timer</string>
     <string name="timer_started">%s timer started</string>
     <string name="paused_remaining">Paused · %s left</string>
-    <string name="timer_entry_description">%1$d hours, %2$d minutes, %3$d seconds</string>
+    <string name="timer_entry_description">Timer length %1$02d:%2$02d:%3$02d</string>
     <string name="backspace">Delete last digit</string>
 
     <string name="lap">Lap</string>
