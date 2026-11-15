@@ -158,6 +158,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         RuntimeInstallWorker.enqueueRemote(getApplication())
     }
 
+    /** Manifest of the runtime packaged inside this APK, or null when none is included. */
+    val bundledRuntime: RuntimeManifest? = com.experience.virtualos.work.BundledRuntime.manifest(app)
+
+    fun installBundledRuntime() {
+        g.activityLog.info("Runtime", "Installing the runtime included in the app")
+        RuntimeInstallWorker.enqueueBundled(getApplication())
+    }
+
+    private val _selfTest = MutableStateFlow<String?>(null)
+    /** Output of the last manual self-test, shown in a dialog. */
+    val selfTest: StateFlow<String?> = _selfTest.asStateFlow()
+    fun dismissSelfTest() { _selfTest.value = null }
+
+    /** Runs QEMU through PRoot from the installed runtime and reports the raw output. */
+    fun runSelfTest() = viewModelScope.launch(Dispatchers.IO) {
+        _selfTest.value = "Running…"
+        _selfTest.value = try {
+            val dir = g.runtimeInstaller.currentDirectory() ?: error("No runtime is installed.")
+            val launcher = g.prootLauncher()
+            val problems = launcher.check()
+            if (problems.isNotEmpty()) error(problems.joinToString("\n"))
+            val rootfs = File(dir, "rootfs")
+            val (c1, o1) = launcher.run(rootfs, listOf("/bin/sh", "-c", "cat /etc/alpine-release; uname -m"), 60)
+            val (c2, o2) = launcher.run(rootfs, listOf("/usr/bin/qemu-system-aarch64", "--version"), 120)
+            val ok = c1 == 0 && c2 == 0 && o2.contains("QEMU emulator version")
+            (if (ok) "PASSED\n\n" else "FAILED\n\n") + "Alpine (exit $c1):\n${o1.trim()}\n\nQEMU (exit $c2):\n${o2.trim()}"
+        } catch (e: Exception) {
+            "FAILED\n\n${e.message ?: e}"
+        }.also { g.activityLog.add(if (it.startsWith("PASSED")) com.experience.virtualos.core.log.LogLevel.SUCCESS else com.experience.virtualos.core.log.LogLevel.ERROR, "Runtime", "Self-test: ${it.take(300)}") }
+    }
+
     fun cancelRuntimeInstall() = work.cancelUniqueWork(WorkKeys.RUNTIME_WORK)
 
     /** Copies a user-picked archive + manifest into private storage and installs them. */

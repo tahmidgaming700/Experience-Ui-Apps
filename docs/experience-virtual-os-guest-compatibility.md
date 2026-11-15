@@ -73,10 +73,30 @@ to boot and single-digit frames per second).
 | PRoot is Bionic (`/system/bin/linker64`), AArch64, deps resolvable from APK + system | `fetch-termux-proot.sh`, `verify-experience-virtual-os-apk.py` | ✓ |
 | Runtime archive extracts with the app's own extractor (UTF-8 names, symlinks, hardlinks) | `TarExtractorTest.extractsRealRuntimeArchive` | ✓ |
 
+## Verified on a real Android ARM64 kernel
+
+Android 11 (API 30, kernel 5.4.86, arm64) booted headless on QEMU, serial shell as the unprivileged
+`shell` user (uid 2000), using the APK's PRoot libraries and the runtime rootfs with the exact flags
+and environment of `ProotLauncher`:
+
+| Step | Result |
+|---|---|
+| `libproot.so --version` (Bionic, LD_LIBRARY_PATH = lib dir) | ✓ |
+| PRoot → Alpine `/bin/sh` (`/etc/alpine-release` = 3.24.4, `uname -m` = aarch64, fake root) | ✓ exit 0 |
+| `qemu-system-aarch64 --version` (the app's install self-test) | ✓ QEMU 11.0.3 |
+| `qemu-img create -f qcow2` on a path bound from app storage | ✓ |
+| `mke2fs -t ext4 -O quota,verity` | ✓ |
+| `qemu-system-aarch64 -M virt` with VNC on 127.0.0.1, alive after 12 s | ✓ |
+
+The debug build also contains `DevInstallMain` (debug source set only), which runs the app's real
+installer and VM launch code under `app_process` without the UI — useful on a device via adb:
+`CLASSPATH=app-debug.apk app_process /system/bin com.experience.virtualos.DevInstallMain <base.tar.gz> <manifest.json> <dataDir> <nativeLibDir>`.
+
 ## Not yet verified (needs a physical ARM64 phone)
 
-* PRoot + Alpine QEMU executing on Android 9 / EMUI 9.1 (the in-app self-test checks exactly this
-  during installation and refuses to activate a runtime that fails).
+* The same on Android 9 / EMUI 9.1 with SELinux enforcing in the app domain (the in-app
+  self-test checks exactly this during installation, and *Runtime › Run self-test* shows the raw
+  output).
 * Guest performance and thermal behaviour on Kirin 710 under TCG.
 * EMUI background-process limits with the foreground service.
 * VNC display, touch and keyboard on a real screen.

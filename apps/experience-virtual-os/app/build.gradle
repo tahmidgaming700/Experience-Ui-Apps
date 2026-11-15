@@ -47,6 +47,18 @@ android {
         }
     }
 
+    // Optional bundled runtime: if build/bundled-runtime/runtime/ holds base-runtime.bin and
+    // manifest.json (copied by the bundleRuntime property below), the APK can install the
+    // runtime offline. The archive is already gzip-compressed, so it is stored uncompressed.
+    sourceSets {
+        main {
+            assets.srcDirs += [layout.buildDirectory.dir('bundled-runtime').get().asFile]
+        }
+    }
+    androidResources {
+        noCompress 'bin'
+    }
+
     packaging {
         jniLibs {
             // PRoot is executed from nativeLibraryDir, so the libraries must be
@@ -121,4 +133,27 @@ dependencies {
     testImplementation 'androidx.test:core-ktx:1.7.0'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
+}
+
+// ./gradlew assembleRelease -PbundleRuntime=/path/to/runtime-dist
+// copies base.tar.gz + manifest.json into the APK assets after checking SHA256SUMS.
+def bundleDir = project.findProperty('bundleRuntime')
+def bundled = layout.buildDirectory.dir('bundled-runtime/runtime').get().asFile
+if (bundleDir) {
+    def src = file(bundleDir)
+    def archive = new File(src, 'base.tar.gz')
+    def manifestFile = new File(src, 'manifest.json')
+    if (!archive.isFile() || !manifestFile.isFile()) throw new GradleException("bundleRuntime: base.tar.gz and manifest.json are required in $src")
+    def expected = new File(src, 'SHA256SUMS').readLines().find { it.endsWith('base.tar.gz') }?.split()?.getAt(0)
+    def actual = java.security.MessageDigest.getInstance('SHA-256').with { md ->
+        archive.withInputStream { ins -> byte[] b = new byte[1 << 16]; int n; while ((n = ins.read(b)) > 0) md.update(b, 0, n) }
+        md.digest().encodeHex().toString()
+    }
+    if (expected != actual) throw new GradleException("bundleRuntime: SHA-256 of base.tar.gz does not match SHA256SUMS")
+    bundled.mkdirs()
+    java.nio.file.Files.copy(archive.toPath(), new File(bundled, 'base-runtime.bin').toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    java.nio.file.Files.copy(manifestFile.toPath(), new File(bundled, 'manifest.json').toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    logger.lifecycle("Bundling runtime $actual into the APK")
+} else if (bundled.exists()) {
+    bundled.deleteDir()
 }

@@ -20,7 +20,6 @@ import com.experience.virtualos.core.vm.DeviceStore
 import com.experience.virtualos.core.vm.VmController
 import com.experience.virtualos.core.vm.VmService
 import java.io.File
-import java.io.IOException
 
 class App : Application(), Configuration.Provider {
     lateinit var graph: AppGraph
@@ -78,19 +77,7 @@ class AppGraph(private val app: App) {
             sdkInt = android.os.Build.VERSION.SDK_INT,
             appVersionCode = BuildConfig.VERSION_CODE,
         ),
-        smokeTest = { dir, manifest ->
-            // Execute QEMU from the staged runtime through PRoot before it is
-            // activated: proves the loader, libraries and permissions work on
-            // this device, not just that the files exist.
-            val launcher = prootLauncher()
-            val problems = launcher.check()
-            if (problems.isNotEmpty()) throw IOException(problems.joinToString(" "))
-            val qemu = "/" + manifest.qemuEntrypoint.removePrefix("rootfs/")
-            val (code, out) = launcher.run(File(dir, "rootfs"), listOf(qemu, "--version"), 120)
-            if (code != 0 || !out.contains("QEMU emulator version")) {
-                throw IOException("Runtime self-test failed (exit $code): ${out.take(1500)}")
-            }
-        },
+        smokeTest = { dir, manifest -> ProotLauncher.selfTest(prootLauncher(), dir, manifest) },
     )
 
     val deviceStore = DeviceStore(File(dataDir, "devices"))

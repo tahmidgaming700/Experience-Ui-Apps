@@ -214,6 +214,14 @@ private fun RuntimeStep(vm: AppViewModel) {
         t != null && t.running -> SectionCard { ProgressBlock(t.stage, t.done, t.total) }
         else -> {
             if (t?.error != null) Notice(t.error, Tone.BAD)
+            vm.bundledRuntime?.let { b ->
+                SectionCard(eyebrow = "Included with the app", title = "Runtime ${b.runtimeVersion}") {
+                    InfoRow("Installed size", FileUtils.formatBytes(b.archive.unpackedSizeBytes))
+                    b.components["qemu"]?.let { InfoRow("QEMU", it) }
+                    Text("No download needed. The archive is still checked against its SHA-256 and self-tested on this phone.", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = vm::installBundledRuntime, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Install included runtime") }
+                }
+            }
             when (val r = runtime.remote) {
                 RemoteManifestState.Unknown, RemoteManifestState.Checking -> SectionCard { ProgressBlock("Looking for the latest runtime release…", 0, 0) }
                 is RemoteManifestState.Error -> Notice(r.message, Tone.WARN)

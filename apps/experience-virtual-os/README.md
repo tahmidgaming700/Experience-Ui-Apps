@@ -85,6 +85,9 @@ python3 scripts/generate-runtime-manifest.py --dist runtime-dist \
   --repo tahmidgaming700/Experience-Ui-Apps --tag runtime-v0.6.0 --min-app-version-code 6
 ```
 
+To ship the runtime inside the APK (offline install, ~38 MB APK), add
+`-PbundleRuntime=/path/to/runtime-dist`; the build checks `base.tar.gz` against `SHA256SUMS` first.
+
 Set `EVOS_RUNTIME_ARCHIVE=$PWD/runtime-dist/base.tar.gz` when running the unit tests to also
 extract the real archive with the app's extractor.
 
@@ -115,8 +118,9 @@ device; only then does `releases/latest/download/manifest.json` resolve for the 
    *Software emulation (TCG)*; no `/dev/kvm` is expected on this phone.
 3. EMUI kills background apps aggressively: Settings › Battery › App launch › Experience Virtual OS
    › *Manage manually*, enable all three toggles.
-4. Install the runtime: if a release is published, tap **Download and install**; otherwise use
-   **Install from files** and pick `base.tar.gz` then `manifest.json` from the CI artifact. The
+4. Install the runtime: APKs built with `-PbundleRuntime=<runtime-dist>` include it, so tap
+   **Install included runtime** (no network needed). Otherwise tap **Download and install** (needs a
+   published release) or **Install from files** and pick `base.tar.gz` then `manifest.json`. The
    install ends with an on-device self-test (`qemu-system-aarch64 --version` through PRoot). If that
    self-test fails, enable *Settings › PRoot compatibility mode* and retry, then share the
    diagnostics report.

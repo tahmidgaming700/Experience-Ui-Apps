@@ -98,6 +98,20 @@ class ProotLauncher(
     companion object {
         const val GUEST_DATA = "/data/evos"
 
+        /**
+         * Executes QEMU from a (staged) runtime through PRoot. Proves the loader,
+         * libraries and permissions work on this device, not just that files exist.
+         */
+        fun selfTest(launcher: ProotLauncher, runtimeDir: File, manifest: com.experience.virtualos.core.runtime.RuntimeManifest) {
+            val problems = launcher.check()
+            if (problems.isNotEmpty()) throw IOException(problems.joinToString(" "))
+            val qemu = "/" + manifest.qemuEntrypoint.removePrefix("rootfs/")
+            val (code, out) = launcher.run(File(runtimeDir, "rootfs"), listOf(qemu, "--version"), 120)
+            if (code != 0 || !out.contains("QEMU emulator version")) {
+                throw IOException("Runtime self-test failed (exit $code): ${out.take(1500)}")
+            }
+        }
+
         /** Maps a file in app storage to the path QEMU sees inside the guest. */
         fun guestPath(hostDataDir: File, file: File): String {
             val base = hostDataDir.absolutePath.trimEnd('/')

@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
@@ -91,7 +94,23 @@ fun RuntimeScreen(vm: AppViewModel, padding: PaddingValues) {
                 runtime.prootProblems.forEach { Notice(it, Tone.BAD) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { vm.refreshRuntime() }) { Text("Verify files") }
+                    if (installed != null) OutlinedButton(onClick = { vm.runSelfTest() }) { Text("Run self-test") }
                     if (installed != null) TextButton(onClick = { confirmRemove = true }) { Text("Remove") }
+                }
+            }
+        }
+
+        vm.bundledRuntime?.let { b ->
+            item {
+                SectionCard(eyebrow = "Included with the app") {
+                    Text("Runtime ${b.runtimeVersion}", style = MaterialTheme.typography.titleLarge)
+                    b.components["qemu"]?.let { InfoRow("QEMU", it) }
+                    InfoRow("Installed size", FileUtils.formatBytes(b.archive.unpackedSizeBytes))
+                    val same = runtime.installed?.archiveSha256 == b.archive.sha256 && runtime.problems.isEmpty()
+                    Button(onClick = vm::installBundledRuntime, enabled = t?.running != true) {
+                        Text(if (runtime.installed == null) "Install included runtime" else if (same) "Reinstall included runtime" else "Install included runtime (replaces current)")
+                    }
+                    Text("Works offline. Verified with SHA-256 and an on-device self-test before it is activated.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -132,6 +151,23 @@ fun RuntimeScreen(vm: AppViewModel, padding: PaddingValues) {
                 FilledTonalButton(onClick = { pickArchive.launch(arrayOf("*/*")) }, enabled = t?.running != true, modifier = Modifier.fillMaxWidth()) { Text("Choose files") }
             }
         }
+    }
+
+    val selfTest by vm.selfTest.collectAsState()
+    selfTest?.let { out ->
+        val context = androidx.compose.ui.platform.LocalContext.current
+        AlertDialog(
+            onDismissRequest = vm::dismissSelfTest,
+            title = { Text("Runtime self-test") },
+            text = { SelectionContainer { Text(out, style = CodeStyle, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) } },
+            confirmButton = { TextButton(onClick = vm::dismissSelfTest) { Text("Close") } },
+            dismissButton = {
+                TextButton(onClick = {
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("self-test", out))
+                }) { Text("Copy") }
+            },
+        )
     }
 
     if (confirmRemove) AlertDialog(

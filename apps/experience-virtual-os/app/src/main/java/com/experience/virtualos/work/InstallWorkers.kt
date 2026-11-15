@@ -95,7 +95,21 @@ class RuntimeInstallWorker(context: Context, params: WorkerParameters) : Progres
                     InstallStage.Activating -> reportBlocking("Activating…")
                 }
             }
-            val installed = if (inputData.getString(WorkKeys.MODE) == "local") {
+            val mode = inputData.getString(WorkKeys.MODE)
+            val installed = if (mode == "bundled") {
+                // Runtime shipped inside the APK: no network and no file picker needed.
+                report("Unpacking included runtime…", force = true)
+                val dir = File(applicationContext.cacheDir, "bundled-runtime").apply { mkdirs() }
+                val archive = File(dir, "base.tar.gz")
+                try {
+                    val manifest = BundledRuntime.manifest(applicationContext)
+                        ?: throw IllegalStateException("This APK does not include a runtime.")
+                    applicationContext.assets.open(BundledRuntime.ARCHIVE).use { input -> archive.outputStream().use { input.copyTo(it, 1 shl 16) } }
+                    installer.installFromFile(archive, manifest, onStage)
+                } finally {
+                    archive.delete()
+                }
+            } else if (mode == "local") {
                 val archive = File(inputData.getString(WorkKeys.ARCHIVE)!!)
                 val manifestFile = File(inputData.getString(WorkKeys.MANIFEST)!!)
                 try {
@@ -119,6 +133,8 @@ class RuntimeInstallWorker(context: Context, params: WorkerParameters) : Progres
 
     companion object {
         fun enqueueRemote(context: Context) = enqueue(context, workDataOf(WorkKeys.MODE to "remote"))
+
+        fun enqueueBundled(context: Context) = enqueue(context, workDataOf(WorkKeys.MODE to "bundled"))
 
         fun enqueueLocal(context: Context, archive: File, manifest: File) =
             enqueue(context, workDataOf(WorkKeys.MODE to "local", WorkKeys.ARCHIVE to archive.absolutePath, WorkKeys.MANIFEST to manifest.absolutePath))
@@ -160,5 +176,17 @@ class ImageInstallWorker(context: Context, params: WorkerParameters) : ProgressW
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(WorkKeys.imageWork(image.id), ExistingWorkPolicy.KEEP, request)
         }
+    }
+}
+
+/** Optional runtime packaged as APK assets by the build (see app/build.gradle). */
+object BundledRuntime {
+    const val ARCHIVE = "runtime/base-runtime.bin"
+    private const val MANIFEST = "runtime/manifest.json"
+
+    fun manifest(context: Context): RuntimeManifest? = try {
+        context.assets.open(MANIFEST).use { RuntimeManifest.parse(it.readBytes().toString(Charsets.UTF_8)) }
+    } catch (_: java.io.IOException) {
+        null
     }
 }
