@@ -16,3 +16,9 @@
 local.properties
 .env
 debug.keystore
+
+# Python bytecode
+__pycache__/
+*.pyc
+# ROM build output
+/out/
