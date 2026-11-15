@@ -35,6 +35,8 @@ import com.experience.settings.ui.link
 import com.experience.settings.ui.rememberSystemValue
 import com.experience.settings.ui.startSafely
 
+// BLUETOOTH (install-time on Android 11) covers this; BLUETOOTH_CONNECT only exists from API 31.
+@SuppressLint("MissingPermission")
 private fun deviceIcon(d: BluetoothDevice): ImageVector = when (d.bluetoothClass?.majorDeviceClass) {
     BluetoothClass.Device.Major.AUDIO_VIDEO -> Icons.Outlined.Headphones
     BluetoothClass.Device.Major.PHONE -> Icons.Outlined.Smartphone

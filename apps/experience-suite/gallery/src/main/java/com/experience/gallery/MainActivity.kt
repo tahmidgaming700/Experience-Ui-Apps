@@ -65,7 +65,8 @@ class MainActivity : ExperienceActivity() {
         when (i?.action) {
             Intent.ACTION_VIEW, "com.android.camera.action.REVIEW" -> i.data?.let { Mode.View(it, i.type) } ?: Mode.Browse
             Intent.ACTION_GET_CONTENT, Intent.ACTION_PICK -> Mode.Pick(
-                i.getStringArrayExtra(Intent.EXTRA_MIME_TYPES)?.toList() ?: listOfNotNull(i.type),
+                // ACTION_PICK often carries only a MediaStore dir URI: resolve its type from the provider.
+                i.getStringArrayExtra(Intent.EXTRA_MIME_TYPES)?.toList() ?: listOfNotNull(i.resolveType(contentResolver)),
                 i.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false),
             )
             else -> Mode.Browse
