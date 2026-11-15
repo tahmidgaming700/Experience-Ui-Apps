@@ -81,7 +81,10 @@ object SettingsSearch {
         e("Open source licences", Page.ABOUT, "licenses", "legal")
     }
 
-    /** Ranked results: title prefix, then word prefix in title, then title/keyword substring. */
+    /**
+     * Ranked results: title prefix, word prefix in the title, keyword prefix, then
+     * substrings (so "ota" finds System updates before "Auto-rotate").
+     */
     fun search(query: String, source: List<SearchEntry> = entries): List<SearchEntry> {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return emptyList()
@@ -90,8 +93,8 @@ object SettingsSearch {
             return when {
                 t.startsWith(q) -> 0
                 t.split(' ', '-', '&').any { it.startsWith(q) } -> 1
-                t.contains(q) -> 2
-                e.keywords.any { it.startsWith(q) } -> 3
+                e.keywords.any { k -> k.startsWith(q) || k.split(' ').any { it.startsWith(q) } } -> 2
+                t.contains(q) -> 3
                 e.keywords.any { it.contains(q) } -> 4
                 else -> null
             }
