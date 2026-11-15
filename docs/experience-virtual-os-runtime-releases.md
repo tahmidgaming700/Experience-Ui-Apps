@@ -4,7 +4,7 @@ The runtime is distributed separately from the APK as a GitHub Release asset set
 
 | Asset | Produced by | Purpose |
 |---|---|---|
-| `base.tar.gz` | `scripts/build-experience-virtual-os-runtime.sh` | `runtime-info.json` + `rootfs/` (Alpine aarch64 + QEMU) |
+| `base.tar.gz` | `scripts/build-experience-virtual-os-runtime.sh` | `runtime-info.json` + `rootfs/` (Ubuntu 26.04.1 arm64 + QEMU) |
 | `SHA256SUMS` | same | SHA-256 of `base.tar.gz` |
 | `manifest.json` | `scripts/generate-runtime-manifest.py` | Machine-readable description, generated from the built archive |
 | `experience-virtual-os-release*.apk` | Gradle (R8) | The app; signed when signing secrets are configured |
@@ -16,14 +16,14 @@ published yet").
 
 ## Pipeline
 
-1. **runtime job** — downloads `alpine-minirootfs-3.24.4-aarch64.tar.gz` and `apk-tools-static`
+1. **runtime job** (native ARM64 runner) — downloads `ubuntu-base-26.04.1-base-arm64.tar.gz` (SHA-256 pinned), resolves and downloads QEMU packages with signature-verified apt, installs them with the root's dpkg in a chroot, then
    (SHA-256 pinned), installs QEMU with signature-checked `apk`, verifies ELF architecture and
    library closure, runs QEMU under `qemu-aarch64` (version + VNC handshake), packs a reproducible
    archive and generates `manifest.json`.
 2. **android job** — fetches the pinned Termux PRoot, runs unit, Robolectric UI and real-archive
    extraction tests, lint, builds debug + release APKs and inspects them.
 3. **release job** (tags `v*` / `runtime-v*` only) — re-checks `SHA256SUMS` and the manifest tag,
-   writes release notes with the compatibility statement and creates a **draft** release.
+   writes release notes with the compatibility statement and publishes the release as **latest**.
 
 ## Cutting a release
 
@@ -51,11 +51,11 @@ installable but signed with a throwaway CI key.
 {
   "schemaVersion": 2,
   "kind": "experience-virtual-os-runtime",
-  "runtimeVersion": "0.6.0",
-  "releaseTag": "v0.6.0",
+  "runtimeVersion": "0.7.0",
+  "releaseTag": "v0.7.0",
   "abi": "arm64-v8a",
   "minHostApi": 28,
-  "minAppVersionCode": 6,
+  "minAppVersionCode": 7,
   "archive": {
     "fileName": "base.tar.gz",
     "url": "https://github.com/<owner>/<repo>/releases/download/<tag>/base.tar.gz",
@@ -65,16 +65,16 @@ installable but signed with a throwaway CI key.
     "unpackedSizeBytes": 239831176,
     "entries": 1018
   },
-  "components": { "userspace": "alpine 3.24.4", "libc": "musl", "qemu": "11.0.3-r0" },
+  "components": { "userspace": "ubuntu 26.04.1", "libc": "glibc", "qemu": "1:10.2.1+ds-1ubuntu3.3" },
   "entrypoints": {
-    "shell": "rootfs/bin/sh",
+    "shell": "rootfs/usr/bin/sh",
     "qemuSystemAarch64": "rootfs/usr/bin/qemu-system-aarch64",
     "qemuImg": "rootfs/usr/bin/qemu-img",
-    "uefiFirmware": "rootfs/usr/share/qemu/edk2-aarch64-code.fd",
-    "uefiVars": "rootfs/usr/share/qemu/edk2-arm-vars.fd",
-    "mke2fs": "rootfs/sbin/mke2fs"
+    "uefiFirmware": "rootfs/usr/share/AAVMF/AAVMF_CODE.fd",
+    "uefiVars": "rootfs/usr/share/AAVMF/AAVMF_VARS.fd",
+    "mke2fs": "rootfs/usr/sbin/mke2fs"
   },
-  "requiredPaths": ["…every entrypoint…", "runtime-info.json", "rootfs/lib/ld-musl-aarch64.so.1", "rootfs/etc/apk/keys"],
+  "requiredPaths": ["…every entrypoint…", "runtime-info.json", "rootfs/usr/lib/ld-linux-aarch64.so.1", "rootfs/etc/os-release"],
   "capabilities": { "linuxUserspace": "supported", "linuxGuestArm64": "experimental", "androidGuest": "experimental-console-only" },
   "notes": "…"
 }

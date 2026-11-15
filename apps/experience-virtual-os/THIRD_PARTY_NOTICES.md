@@ -18,13 +18,13 @@ AndroidX, Jetpack Compose, Material Components, Kotlin and kotlinx libraries are
 
 | Component | Licence |
 |---|---|
-| Alpine Linux 3.24 minirootfs (busybox, musl, apk-tools, …) | busybox GPL-2.0-only, musl MIT, others per package |
-| QEMU 11.0 (`qemu-system-aarch64`, `qemu-img`, modules) | GPL-2.0-only AND LGPL-2.1-only (Alpine package metadata) |
-| EDK II firmware shipped with QEMU (`edk2-aarch64-code.fd`) | BSD-2-Clause-Patent |
+| Ubuntu 26.04.1 LTS base (glibc, dash, coreutils, apt, …) | per package; see `/usr/share/doc/*/copyright` in the runtime |
+| QEMU 10.2 (`qemu-system-aarch64`, `qemu-img`, modules; Ubuntu build) | GPL-2.0 (some parts LGPL-2.1/BSD/MIT) |
+| EDK II / AAVMF UEFI firmware (`qemu-efi-aarch64`) | BSD-2-Clause-Patent |
 | e2fsprogs | GPL-2.0-or-later AND LGPL-2.0-or-later AND BSD-3-Clause AND MIT |
 
 Exact package versions are recorded in `runtime-info.json` inside each archive. Sources are
-available from https://pkgs.alpinelinux.org and https://gitlab.alpinelinux.org/alpine/aports.
+available from https://launchpad.net/ubuntu and `apt-get source` against the Ubuntu archive.
 
 ## Downloaded by the user at run time
 

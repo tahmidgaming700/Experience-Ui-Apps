@@ -8,10 +8,10 @@ see "Not yet verified".
 
 | Term | What it is | Relevance here |
 |---|---|---|
-| Alpine Linux ARM64 userspace | musl-based Linux root filesystem | The runtime (`base.tar.gz`) |
+| Ubuntu ARM64 userspace | glibc-based Linux root filesystem (26.04 LTS) | The runtime (`base.tar.gz`, since 0.7.0; 0.6.x used Alpine/musl) |
 | PRoot | ptrace-based fake-chroot; runs Linux userspace binaries on an Android kernel without root | Launches everything inside the runtime |
 | Android-hosted QEMU | QEMU compiled for Bionic (e.g. Termux) | **Not used** (dependency tree too large) |
-| Linux-hosted QEMU | QEMU compiled for glibc/musl Linux | Used: Alpine's musl QEMU, run under PRoot |
+| Linux-hosted QEMU | QEMU compiled for glibc/musl Linux | Used: Ubuntu's QEMU, run under PRoot |
 | Android Emulator | Google's fork of QEMU ("AEMU") + goldfish/ranchu devices, gfxstream GPU | Only built for Linux/macOS/Windows hosts; **not available on Android** |
 | Goldfish / Ranchu | The emulator's virtual board and its paravirtual devices (`goldfish_pipe`, address-space, battery, sync…) | Upstream QEMU implements none of the pipe devices |
 | Android emulator system image | `kernel-ranchu`, `ramdisk.img`, `system.img` (super), `vendor.img`, … for the emulator | Downloadable; boots only partially on upstream QEMU (below) |
@@ -65,15 +65,15 @@ to boot and single-digit frames per second).
 
 | Check | Where | Result |
 |---|---|---|
-| Alpine minirootfs SHA-256 pinned | `build-experience-virtual-os-runtime.sh` | ✓ |
-| apk package signatures | `apk.static` with keys from the verified minirootfs | ✓ |
-| Every shipped executable is AArch64, musl interpreter, closed `DT_NEEDED` set | `verify-runtime-rootfs.py` (62 ELF objects) | ✓ |
+| Ubuntu base tarball SHA-256 pinned | `build-experience-virtual-os-runtime.sh` | ✓ |
+| Package signatures | apt with the Ubuntu archive keyring from the verified base tarball | ✓ |
+| Every shipped executable is AArch64, glibc interpreter, closed `DT_NEEDED` set | `verify-runtime-rootfs.py` | ✓ |
 | QEMU executes (`--version`) and its VNC server completes an RFB 3.8 handshake | qemu-user smoke test in build script | ✓ |
 | Reproducible archive (two builds, identical SHA-256) | local | ✓ (given identical package versions) |
 | PRoot is Bionic (`/system/bin/linker64`), AArch64, deps resolvable from APK + system | `fetch-termux-proot.sh`, `verify-experience-virtual-os-apk.py` | ✓ |
 | Runtime archive extracts with the app's own extractor (UTF-8 names, symlinks, hardlinks) | `TarExtractorTest.extractsRealRuntimeArchive` | ✓ |
 
-## Verified on a real Android ARM64 kernel
+## Verified on a real Android ARM64 kernel (runtime 0.6, Alpine)
 
 Android 11 (API 30, kernel 5.4.86, arm64) booted headless on QEMU, serial shell as the unprivileged
 `shell` user (uid 2000), using the APK's PRoot libraries and the runtime rootfs with the exact flags

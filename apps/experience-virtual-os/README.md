@@ -1,7 +1,7 @@
 # Experience Virtual OS
 
 A rootless virtual-machine manager for ARM64 Android phones (Android 9+). It runs
-QEMU inside a private Alpine Linux userspace under PRoot — no root, no bootloader
+QEMU inside a private Ubuntu 26.04 LTS (ARM64) userspace under PRoot — no root, no bootloader
 unlock, no system modification.
 
 **What works today, honestly stated** (details and evidence in
@@ -19,7 +19,7 @@ unlock, no system modification.
 
 ```
 APK (Kotlin, Compose Material 3)                      GitHub Release (separate)
-├─ UI: setup wizard, dashboard, devices, images,      ├─ base.tar.gz     Alpine 3.24 aarch64 rootfs
+├─ UI: setup wizard, dashboard, devices, images,      ├─ base.tar.gz     Ubuntu 26.04.1 arm64 rootfs
 │      runtime, settings/diagnostics                  │                  + qemu-system-aarch64, qemu-img,
 ├─ core/runtime  manifest → download → SHA-256 →      │                    virtio-gpu modules, e2fsprogs
 │                safe tar extract → self-test →       ├─ SHA256SUMS
@@ -37,24 +37,26 @@ Host-side and guest-side binaries are kept strictly apart:
 * **Android/Bionic (in the APK):** `libproot.so`, `libproot-loader.so`, `libtalloc.so`,
   `libandroid-shmem.so` — Termux's PRoot build, fetched and SHA-256 pinned by
   `scripts/fetch-termux-proot.sh`, with `NEEDED`/`RUNPATH` rewritten for `nativeLibraryDir`.
-* **Linux/musl (in the runtime archive):** everything QEMU needs. These binaries only run
-  inside the Alpine root under PRoot; they are never executed directly on Bionic.
+* **Linux/glibc (in the runtime archive):** everything QEMU needs. These binaries only run
+  inside the Ubuntu root under PRoot; they are never executed directly on Bionic.
 
 QEMU's VNC server and QMP monitor listen on `127.0.0.1` only. Guest disks, logs and the
 launch command for each device live in `files/devices/<id>/`.
 
 ### Key decisions
 
-* **Runtime outside the APK.** The APK is ~5 MB; the 34 MB runtime is versioned and verified
+* **Runtime versioned separately.** The runtime is versioned and verified
   independently, can be repaired or updated without reinstalling the app, and the previous
   runtime keeps working until a new one has passed extraction, required-path and on-device
   self-test checks.
 * **Own tar extractor.** Android 9's toybox has no reliable `tar`; the Kotlin extractor handles
   symlinks, hard links (with copy fallback, since apps are often denied `link()`), GNU long names
   and pax headers, and refuses traversal or writes through symlinks.
-* **Alpine QEMU instead of Termux QEMU.** Termux's `qemu-system-aarch64` drags in PulseAudio,
+* **Ubuntu QEMU instead of Termux QEMU.** Termux's `qemu-system-aarch64` drags in PulseAudio,
   JACK, SPICE and ~40 other Termux libraries with a hard-coded `/data/data/com.termux` prefix.
-  Alpine's musl build under PRoot is self-contained and signature-verified by `apk`.
+  Ubuntu's build under PRoot is self-contained, from a signed archive, and maintained by Ubuntu's
+  security team. (0.6.x used Alpine/musl; 0.7.0 switched to Ubuntu 26.04 LTS on request — larger,
+  glibc-based.)
 * **No `kernel-qemu`.** The previously bundled brillo `kernel-qemu` is a 3.10 goldfish kernel that
   cannot boot any API 24–37 image; Android images bring their own `kernel-ranchu`.
 * **Material 3.** Stable Compose Material3 1.4 keeps `MaterialExpressiveTheme` internal, so
