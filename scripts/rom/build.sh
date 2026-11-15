@@ -14,7 +14,7 @@ export EXPERIENCE_BUILD_ID
 mkdir -p "$EXPERIENCE_OUT/dist" "$EXPERIENCE_OUT/logs"
 LOG="$EXPERIENCE_OUT/logs/build-$EXPERIENCE_BUILD_ID.log"
 
-cd "$EXPERIENCE_TOP"
+cd "$EXPERIENCE_TOP" || die "cannot enter $EXPERIENCE_TOP"
 [[ -f vendor/experience/prebuilt/apps/ExperienceLauncher/ExperienceLauncher.apk ]] \
     || die "Experience app prebuilts are missing (run collect-app-prebuilts.sh)"
 

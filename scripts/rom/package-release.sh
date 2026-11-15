@@ -76,6 +76,7 @@ json.dump(info, open(out, "w"), indent=2)
 PY
 
 ( cd "$REL" && sha256sum ./*.img.xz build-info.json | sed 's# \./# #' > SHA256SUMS )
-tar -C "$EXPERIENCE_OUT" -cJf "$REL/logs-$BUILD_ID.tar.xz" logs dist/verification.json \
-    $( [[ -f "$DIST/experience-pinned-manifest.xml" ]] && echo dist/experience-pinned-manifest.xml )
+log_inputs=(logs dist/verification.json)
+[[ -f "$DIST/experience-pinned-manifest.xml" ]] && log_inputs+=(dist/experience-pinned-manifest.xml)
+tar -C "$EXPERIENCE_OUT" -cJf "$REL/logs-$BUILD_ID.tar.xz" "${log_inputs[@]}"
 log "release assets in $REL:"; ls -la "$REL" >&2

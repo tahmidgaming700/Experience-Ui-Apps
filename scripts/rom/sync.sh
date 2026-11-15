@@ -13,7 +13,7 @@ source "$(dirname "$0")/common.sh"
 
 command -v repo >/dev/null || die "repo is not installed (https://gerrit.googlesource.com/git-repo)"
 mkdir -p "$EXPERIENCE_TOP"
-cd "$EXPERIENCE_TOP"
+cd "$EXPERIENCE_TOP" || die "cannot enter $EXPERIENCE_TOP"
 
 if [[ ! -d .repo ]]; then
     log "repo init $LINEAGE_MANIFEST_URL ($LINEAGE_BRANCH)"

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared helpers for the Experience UI ROM scripts. Source, do not execute.
 set -euo pipefail
 
