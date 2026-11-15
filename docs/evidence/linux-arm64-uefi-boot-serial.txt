@@ -1,0 +1,6 @@
+UEFI firmware (version edk2-stable202408-prebuilt.qemu.org built at 16:28:50 on Sep 12 2024)
+BdsDxe: starting Boot0001 "UEFI QEMU QEMU CD-ROM " from PciRoot(0x0)/Pci(0x5,0x0)/Scsi(0x0,0x0)
+ * Creating user login records ... [ ok ]
+Welcome to Alpine Linux 3.24
+Kernel 6.18.60-0-virt on aarch64 (/dev/ttyAMA0)
+localhost login: 

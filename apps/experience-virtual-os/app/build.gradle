@@ -1,0 +1,159 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+    id 'org.jetbrains.kotlin.plugin.serialization'
+}
+
+android {
+    namespace 'com.experience.virtualos'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.experience.virtualos'
+        minSdk 28
+        targetSdk 35
+        versionCode 7
+        versionName '0.7.0'
+        // Only ARM64 hosts are supported: the bundled PRoot and the runtime
+        // archive are arm64-v8a builds.
+        ndk { abiFilters 'arm64-v8a' }
+        buildConfigField 'String', 'RUNTIME_MANIFEST_URL',
+                '"https://github.com/tahmidgaming700/Experience-Ui-Apps/releases/latest/download/manifest.json"'
+        buildConfigField 'int', 'RUNTIME_SCHEMA_VERSION', '2'
+    }
+
+    signingConfigs {
+        release {
+            def keystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // R8 shrinks the Compose/icon libraries from ~70 MB of dex to a few MB.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (System.getenv('ANDROID_KEYSTORE_PATH')) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    // Optional bundled runtime: if build/bundled-runtime/runtime/ holds base-runtime.bin and
+    // manifest.json (copied by the bundleRuntime property below), the APK can install the
+    // runtime offline. The archive is already gzip-compressed, so it is stored uncompressed.
+    sourceSets {
+        main {
+            assets.srcDirs += [layout.buildDirectory.dir('bundled-runtime').get().asFile]
+        }
+    }
+    androidResources {
+        noCompress 'bin'
+    }
+
+    packaging {
+        jniLibs {
+            // PRoot is executed from nativeLibraryDir, so the libraries must be
+            // extracted to disk at install time rather than mapped from the APK.
+            useLegacyPackaging true
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+        compose true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            // Android always uses UTF-8 file names; make the JVM match so the
+            // real runtime archive (which has UTF-8 names) extracts in tests.
+            environment 'LC_ALL', 'C.UTF-8'
+            environment 'LANG', 'C.UTF-8'
+            systemProperty 'sun.jnu.encoding', 'UTF-8'
+            systemProperty 'file.encoding', 'UTF-8'
+            if (System.getenv('EVOS_RUNTIME_ARCHIVE')) environment 'EVOS_RUNTIME_ARCHIVE', System.getenv('EVOS_RUNTIME_ARCHIVE')
+        }
+    }
+
+    lint {
+        // The APK only ships arm64-v8a PRoot binaries; x86_64 ChromeOS cannot run them.
+        disable 'ChromeOsAbiSupport'
+        // Dependencies are pinned deliberately; upgrades go through CI review.
+        disable 'GradleDependency', 'NewerVersionAvailable', 'AndroidGradlePluginVersion'
+        abortOnError true
+        checkReleaseBuilds true
+        warningsAsErrors false
+    }
+}
+
+dependencies {
+    def composeBom = platform('androidx.compose:compose-bom:2025.10.01')
+    implementation composeBom
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.activity:activity-compose:1.11.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.9.4'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4'
+    implementation 'androidx.lifecycle:lifecycle-service:2.9.4'
+    implementation 'androidx.navigation:navigation-compose:2.9.5'
+    implementation 'androidx.work:work-runtime-ktx:2.10.5'
+    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    // Material Components supplies the XML window theme used before Compose draws.
+    implementation 'com.google.android.material:material:1.13.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.16'
+    testImplementation 'androidx.compose.ui:ui-test-junit4'
+    testImplementation 'androidx.test:core-ktx:1.7.0'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
+}
+
+// ./gradlew assembleRelease -PbundleRuntime=/path/to/runtime-dist
+// copies base.tar.gz + manifest.json into the APK assets after checking SHA256SUMS.
+def bundleDir = project.findProperty('bundleRuntime')
+def bundled = layout.buildDirectory.dir('bundled-runtime/runtime').get().asFile
+if (bundleDir) {
+    def src = file(bundleDir)
+    def archive = new File(src, 'base.tar.gz')
+    def manifestFile = new File(src, 'manifest.json')
+    if (!archive.isFile() || !manifestFile.isFile()) throw new GradleException("bundleRuntime: base.tar.gz and manifest.json are required in $src")
+    def expected = new File(src, 'SHA256SUMS').readLines().find { it.endsWith('base.tar.gz') }?.split()?.getAt(0)
+    def actual = java.security.MessageDigest.getInstance('SHA-256').with { md ->
+        archive.withInputStream { ins -> byte[] b = new byte[1 << 16]; int n; while ((n = ins.read(b)) > 0) md.update(b, 0, n) }
+        md.digest().encodeHex().toString()
+    }
+    if (expected != actual) throw new GradleException("bundleRuntime: SHA-256 of base.tar.gz does not match SHA256SUMS")
+    bundled.mkdirs()
+    java.nio.file.Files.copy(archive.toPath(), new File(bundled, 'base-runtime.bin').toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    java.nio.file.Files.copy(manifestFile.toPath(), new File(bundled, 'manifest.json').toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    logger.lifecycle("Bundling runtime $actual into the APK")
+} else if (bundled.exists()) {
+    bundled.deleteDir()
+}

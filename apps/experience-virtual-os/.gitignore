@@ -1,0 +1,9 @@
+# Fetched by CI / scripts; never committed.
+app/src/main/jniLibs/
+app/src/main/assets/alpine/
+app/src/main/assets/kernel/
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties

@@ -1,0 +1,284 @@
+name: Build Experience Virtual OS
+
+# Three jobs:
+#   runtime  - builds base.tar.gz from the pinned Ubuntu base on a native ARM64
+#              runner, verifies ELF closure, smoke-tests QEMU through PRoot,
+#              writes manifest.json
+#   android  - builds and tests the APK (unit + Robolectric UI tests, lint),
+#              extracts the real runtime archive in a test, inspects the APK
+#   release  - tags only: publishes a GitHub Release from the verified
+#              artifacts (APK with bundled runtime, base.tar.gz, SHA256SUMS,
+#              manifest.json) and marks it latest, so the app's manifest URL
+#              resolves.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Publish a release with this tag (e.g. v0.7.0). Empty = build only."
+        required: false
+        default: ""
+  push:
+    branches:
+      - main
+      - feat/experience-virtual-os-rootless
+      - "claude/experience-virtual-os-**"
+    tags:
+      - "v*"
+      - "runtime-v*"
+  pull_request:
+    paths:
+      - "apps/experience-virtual-os/**"
+      - "scripts/**"
+      - ".github/workflows/build-experience-virtual-os.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evos-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  APP_DIR: apps/experience-virtual-os
+  # Tag of the release being built: a pushed tag, or the manual release_tag input.
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          uname -m   # native ARM64: the build uses chroot, no emulation
+
+      - name: Build runtime archive
+        run: sudo -E bash scripts/build-experience-virtual-os-runtime.sh runtime-dist
+
+      - name: Generate manifest from the built archive
+        run: |
+          set -euo pipefail
+          sudo chown -R "$(id -u):$(id -g)" runtime-dist
+          VERSION="$(cat scripts/experience-virtual-os-runtime-version)"
+          if [[ -n "${RELEASE_TAG}" ]]; then TAG="${RELEASE_TAG}"; else TAG="runtime-v${VERSION}-ci.${GITHUB_RUN_NUMBER}"; fi
+          python3 -I scripts/generate-runtime-manifest.py --dist runtime-dist --repo "${GITHUB_REPOSITORY}" \
+            --tag "$TAG" --min-app-version-code 7
+          (cd runtime-dist && sha256sum -c SHA256SUMS)
+
+      - name: Upload runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-virtual-os-runtime
+          path: |
+            runtime-dist/base.tar.gz
+            runtime-dist/SHA256SUMS
+            runtime-dist/manifest.json
+            runtime-dist/runtime-info.json
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-24.04
+    needs: runtime
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Validate Gradle wrapper checksum
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > "$APP_DIR/local.properties"
+
+      - name: Fetch and verify Bionic ARM64 PRoot
+        run: |
+          sudo apt-get install -y -qq patchelf binutils
+          bash scripts/fetch-termux-proot.sh "$APP_DIR/app/src/main/jniLibs/arm64-v8a"
+
+      - name: Download runtime artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: experience-virtual-os-runtime
+          path: runtime-dist
+
+      - name: Unit, UI and runtime-extraction tests
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          EVOS_RUNTIME_ARCHIVE: ${{ github.workspace }}/runtime-dist/base.tar.gz
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+
+      - name: Lint
+        working-directory: ${{ env.APP_DIR }}
+        run: ./gradlew --no-daemon lintDebug
+
+      - name: Prepare release signing key
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Release signing secrets are not configured; the release APK stays unsigned."
+            exit 0
+          fi
+          KEYSTORE="$RUNNER_TEMP/release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > /dev/null
+          {
+            echo "ANDROID_KEYSTORE_PATH=$KEYSTORE"
+            echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build debug and release APKs
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          ./gradlew --no-daemon assembleDebug
+          # The release APK carries the verified runtime for offline installation.
+          ./gradlew --no-daemon assembleRelease -PbundleRuntime="$GITHUB_WORKSPACE/runtime-dist"
+
+      - name: Inspect APKs
+        run: |
+          set -euo pipefail
+          OUT="$APP_DIR/app/build/outputs/apk"
+          python3 -I scripts/verify-experience-virtual-os-apk.py "$OUT/debug/app-debug.apk"
+          RELEASE="$(ls "$OUT"/release/*.apk | head -1)"
+          python3 -I scripts/verify-experience-virtual-os-apk.py "$RELEASE"
+          AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          "$AAPT2" dump badging "$RELEASE" | grep -E "^package: name='com.experience.virtualos'"
+          "$AAPT2" dump badging "$RELEASE" | grep -E "^(package|sdkVersion|targetSdkVersion|native-code|uses-permission)"
+          mkdir -p apk-dist
+          cp "$OUT/debug/app-debug.apk" apk-dist/experience-virtual-os-debug.apk
+          if [[ "${{ steps.signing.outputs.ready }}" == "true" ]]; then
+            cp "$RELEASE" apk-dist/experience-virtual-os-release.apk
+          else
+            # No release key configured: sign with this run's debug key so the
+            # APK is at least installable. It cannot update an APK signed with
+            # a different key.
+            CI_KS="$RUNNER_TEMP/ci-debug.jks"
+            keytool -genkeypair -keystore "$CI_KS" -storetype PKCS12 -alias androiddebugkey \
+              -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 3650 \
+              -dname "CN=Experience Virtual OS CI (not a release key)" > /dev/null
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks "$CI_KS" \
+              --ks-pass pass:android --ks-key-alias androiddebugkey \
+              --out apk-dist/experience-virtual-os-release-ci-debugkey.apk "$RELEASE"
+          fi
+          for apk in apk-dist/experience-virtual-os-release*.apk; do
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk"
+          done
+          (cd apk-dist && sha256sum *.apk | tee APK-SHA256SUMS)
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-virtual-os-apk
+          path: apk-dist/
+          if-no-files-found: error
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-virtual-os-reports
+          path: |
+            ${{ env.APP_DIR }}/app/build/reports/
+            ${{ env.APP_DIR }}/app/build/test-results/
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.release_tag != ''
+    needs: [runtime, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Re-verify assets and write release notes
+        run: |
+          set -euo pipefail
+          cd dist/experience-virtual-os-runtime
+          sha256sum -c SHA256SUMS
+          python3 - <<'PY'
+          import json, pathlib
+          m = json.loads(pathlib.Path("manifest.json").read_text())
+          assert m["releaseTag"] == "${{ env.RELEASE_TAG }}", "manifest tag mismatch"
+          assert m["archive"]["sizeBytes"] == pathlib.Path("base.tar.gz").stat().st_size
+          caps = "\n".join(f"| {k} | {v} |" for k, v in m["capabilities"].items())
+          notes = f"""## Experience Virtual OS {m['releaseTag']}
+
+          **Status:** built and verified in CI (unit + UI tests, runtime ELF/library checks, QEMU smoke test, APK inspection). Not yet verified on a physical phone.
+
+          ### Assets
+          | File | Purpose |
+          |---|---|
+          | `experience-virtual-os-release*.apk` | Android app (arm64-v8a, Android 9+) with the runtime included ("Install included runtime"). A `-ci-debugkey` name means no release key was configured. |
+          | `base.tar.gz` | Runtime: {m['components']['userspace']} ({m['components']['libc']}) + QEMU {m['components']['qemu']} |
+          | `SHA256SUMS` | SHA-256 of base.tar.gz |
+          | `manifest.json` | Runtime manifest (schema {m['schemaVersion']}) read by the app |
+
+          Runtime archive: {m['archive']['sizeBytes']} bytes, SHA-256 `{m['archive']['sha256']}`, unpacks to {m['archive']['unpackedSizeBytes']} bytes.
+
+          ### Compatibility
+          * Host: ARM64 (arm64-v8a) Android 9 (API 28) or newer. No root, no bootloader unlock.
+          * Acceleration: KVM is used only if /dev/kvm is accessible to apps (rare); otherwise TCG software emulation.
+
+          | Capability | Level |
+          |---|---|
+          {caps}
+
+          * **Linux ARM64 guests** (UEFI ISO installers / live images): experimental. The QEMU configuration the app generates was verified booting Alpine 3.24 virt to a login prompt with a virtio-gpu display on an x86_64 Linux host; on-phone performance and stability still need device testing.
+          * **Android system images**: experimental, console only. Kernel, init and native services start on QEMU `virt`; there is no display because the images' graphics require the Android Emulator's goldfish pipe.
+          * This runtime is **not** the Android Emulator and does not provide Google Play or Android app support.
+
+          See docs/experience-virtual-os-guest-compatibility.md for the full matrix.
+          """
+          pathlib.Path("../release-notes.md").write_text(notes)
+          PY
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          make_latest: "true"
+          name: Experience Virtual OS ${{ env.RELEASE_TAG }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          # The action creates the tag on the exact commit that was built and tested.
+          target_commitish: ${{ github.sha }}
+          body_path: dist/release-notes.md
+          fail_on_unmatched_files: true
+          files: |
+            dist/experience-virtual-os-runtime/base.tar.gz
+            dist/experience-virtual-os-runtime/SHA256SUMS
+            dist/experience-virtual-os-runtime/manifest.json
+            dist/experience-virtual-os-apk/experience-virtual-os-release*.apk
+            dist/experience-virtual-os-apk/APK-SHA256SUMS
