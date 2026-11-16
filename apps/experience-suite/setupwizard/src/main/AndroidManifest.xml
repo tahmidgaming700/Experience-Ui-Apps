@@ -42,5 +42,17 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <!-- Setup preview: enabled only in builds with -Pexperience.setupPreview=true. -->
+        <activity
+            android:name=".PreviewActivity"
+            android:enabled="@bool/experience_setup_preview"
+            android:exported="true"
+            android:label="@string/setup_preview_label"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

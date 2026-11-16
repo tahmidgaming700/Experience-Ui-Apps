@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Experience Setup Wizard</string>
+    <string name="setup_preview_label">Setup preview</string>
 </resources>
