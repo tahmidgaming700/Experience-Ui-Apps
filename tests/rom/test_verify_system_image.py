@@ -23,7 +23,7 @@ PROPS_BUILD = """ro.build.version.release=11
 ro.build.version.sdk=30
 ro.build.version.security_patch=2024-01-05
 ro.build.display.id=Experience UI 1.0 (EXP1.0.0.202611151530.userdebug)
-ro.system.product.cpu.abilist=arm64-v8a,armeabi-v7a,armeabi
+ro.product.cpu.abilist=arm64-v8a,armeabi-v7a,armeabi
 ro.product.system.model=Experience Device
 ro.experience.display.version=Experience UI 1.0
 ro.experience.base=LineageOS 18.1 + TrebleDroid (Android 11)

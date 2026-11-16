@@ -16,7 +16,9 @@ native applications and its own branding on **LineageOS 18.1** with the
 | Distribution | GitHub Releases (draft pre-releases until boot-verified) |
 
 > **Status, honestly stated.** The 14 Experience apps build, pass their 220 unit tests
-> and lint. The ROM tree, patches and overlays are checked against the real LineageOS
+> and lint. An Experience UI system image built from AndyYan's prebuilt LineageOS 18.1
+> GSI passes all static image checks (see the fast path below); it has **not** been
+> booted on a device. The ROM tree, patches and overlays are checked against the real LineageOS
 > 18.1 sources on every change. **The full ROM has not been compiled yet** — that needs
 > a self-hosted build machine (below) — and **no device has booted Experience UI**. See
 > [docs/build-status.md](docs/build-status.md) and [docs/compatibility.md](docs/compatibility.md).
@@ -129,6 +131,44 @@ it, so Experience UI implements the direction with what Android 11 provides:
   styles and light/dark; accent overlays are checked for 4.5:1 against their surfaces.
 - **Adaptive layouts**: compact / medium / expanded width classes (rails, two panes,
   more grid columns on tablets).
+
+## Fast path: Experience UI on a prebuilt GSI (no Android compile)
+
+`scripts/gsi/repack.sh` adds Experience UI to an existing LineageOS 18.1 GSI system
+image, e.g. AndyYan's `lineage-18.1-20240121-UNOFFICIAL-arm64_bgS.img.xz` (GApps + su):
+
+```bash
+export ANDROID_HOME=~/android-sdk     # build-tools 35, platforms;android-30 and 35
+EXPERIENCE_EDITION=GApps scripts/gsi/repack.sh lineage-18.1-20240121-UNOFFICIAL-arm64_bgS.img.xz out/gsi
+# -> out/gsi/release/ExperienceUI-1.0.0-<build id>-arm64_bgS-repack.img.xz (+ SHA256SUMS, reports)
+```
+
+Or run the **Experience UI GSI** workflow (`experience-ui-gsi-repack.yml`, GitHub-hosted),
+which downloads the base, checks its SHA-256, does the same and uploads the image.
+
+What it does to the base image:
+
+- grows the ext4 filesystem and removes its read-only `shared_blocks` deduplication,
+  so the image is larger than the base (≈ 3.1 GiB vs 2.4 GiB raw);
+- installs the 14 apps signed with the **AOSP test platform key** (the base is signed with
+  it; the tool refuses bases with a different platform certificate), the privileged
+  allowlist, default permissions and sysconfig;
+- ships the Experience resource overlays as *static* RROs (Android 11's framework,
+  SystemUI, Settings and Launcher3 declare no `<overlayable>`, so preinstalled overlays
+  may change them) plus the nine accent overlays; a user-chosen accent still wins;
+- adds the boot animation, wallpapers, sounds and `ro.experience.*` / build display /
+  system model properties; the base fingerprint, security patch level and
+  `ro.lineage.*` stay unchanged;
+- removes the apps Experience replaces: Lineage and Google setup wizards, Etar,
+  Google Clock, Google Calculator, Camera2. Google Dialer, Messages, Contacts and the
+  Search Launcher (recents) stay; Google Messages stays the default SMS app because
+  Experience Messages has no MMS;
+- copies SELinux label, owner and mode for every new file from its neighbours, runs
+  `e2fsck`, then the static image checks.
+
+Not possible on this path: the two Experience *source* patches (QS footer and
+Settings › About version rows) need recompiled SystemUI/Settings; Experience Settings ›
+About shows the same information.
 
 ## Building
 

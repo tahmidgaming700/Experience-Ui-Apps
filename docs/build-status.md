@@ -21,6 +21,7 @@ and passed; anything else says what is missing.
 | Static validation of a real `system.img` | **Not run** | no image yet |
 | Emulator boot | Not applicable | a device GSI does not boot on the Android Emulator (see compatibility.md) |
 | Hardware boot | **Not run** | no verified device |
+| Image from prebuilt base (`scripts/gsi/repack.sh`) | **Built and statically verified** | base `lineage-18.1-20240121-UNOFFICIAL-arm64_bgS.img.xz` (SHA-256 `7bb7c4eb…415a`) → 3.1 GiB system.img, 61/61 image checks; audit: 14 platform-signed apps, labels/modes match neighbours, privapp allowlist covers every privileged permission requested (checked against the image's own framework-res) |
 | Release | **None published** | releases are draft pre-releases created only by the ROM workflow |
 
 ## Expected first-build risks

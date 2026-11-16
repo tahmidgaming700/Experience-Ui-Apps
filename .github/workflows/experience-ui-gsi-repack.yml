@@ -1,0 +1,145 @@
+name: Experience UI GSI (prebuilt base + Experience apps)
+
+# Adds Experience UI to a prebuilt LineageOS 18.1 GSI instead of compiling Android:
+# builds the 14 apps, signs them with the AOSP test platform key (the key the base
+# image is signed with; checked before anything is changed), builds the overlays,
+# repacks the system image with scripts/gsi/repack.sh and runs the static image checks.
+#
+# Fits on a GitHub-hosted runner (works on /mnt, ~10 GB). The image is uploaded as a
+# workflow artifact. With "publish" it also becomes a DRAFT PRE-RELEASE; it is never
+# published as stable, because no boot test exists.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base GSI (.img.xz)"
+        default: "https://downloads.sourceforge.net/project/andyyan-gsi/lineage-18.x/lineage-18.1-20240121-UNOFFICIAL-arm64_bgS.img.xz"
+      base_sha256:
+        description: "SHA-256 of the base .img.xz"
+        default: "7bb7c4ebd336ad1615ce9f078d6a455e2c524d736578571ac41671b36d23415a"
+      edition:
+        description: "GApps for arm64_bgS/bgN bases, Vanilla for bvS/bvN"
+        default: "GApps"
+      publish:
+        description: "Create a draft pre-release"
+        type: boolean
+        default: false
+  push:
+    paths:
+      - "scripts/gsi/**"
+      - ".github/workflows/experience-ui-gsi-repack.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: experience-gsi-repack-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASE_URL: ${{ inputs.base_url || 'https://downloads.sourceforge.net/project/andyyan-gsi/lineage-18.x/lineage-18.1-20240121-UNOFFICIAL-arm64_bgS.img.xz' }}
+  BASE_SHA256: ${{ inputs.base_sha256 || '7bb7c4ebd336ad1615ce9f078d6a455e2c524d736578571ac41671b36d23415a' }}
+  EXPERIENCE_EDITION: ${{ inputs.edition || 'GApps' }}
+  EXPERIENCE_BASE_LABEL: "LineageOS 18.1 arm64_bgS 20240121 (AndyYan) + TrebleDroid (Android 11)"
+  WORK: /mnt/experience-gsi
+
+jobs:
+  repack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      build_id: ${{ steps.id.outputs.build_id }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build ID and workspace
+        id: id
+        run: |
+          echo "build_id=$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+          sudo mkdir -p "$WORK" && sudo chown "$(id -u):$(id -g)" "$WORK"
+          df -h / /mnt
+
+      - name: Tools
+        run: sudo apt-get install -y -qq e2fsprogs xz-utils > /dev/null
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "platforms;android-30" "build-tools;35.0.0" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > apps/experience-suite/local.properties
+
+      - name: Build Experience apps (release)
+        working-directory: apps/experience-suite
+        run: ./gradlew --no-daemon --console=plain assembleRelease
+
+      - name: Download and verify base GSI
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-delay 10 -o "$WORK/base.img.xz" "$BASE_URL"
+          echo "$BASE_SHA256  $WORK/base.img.xz" | sha256sum -c -
+
+      - name: Repack with Experience UI and verify
+        env:
+          EXPERIENCE_BUILD_ID: ${{ steps.id.outputs.build_id }}
+          EXPERIENCE_SKIP_GRADLE: "1"
+        run: bash scripts/gsi/repack.sh "$WORK/base.img.xz" "$WORK/out"
+
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-ui-gsi-${{ steps.id.outputs.build_id }}
+          path: /mnt/experience-gsi/out/release/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-ui-gsi-report-${{ steps.id.outputs.build_id }}
+          path: |
+            /mnt/experience-gsi/out/image/verification.json
+            /mnt/experience-gsi/out/image/repack-manifest.json
+          if-no-files-found: ignore
+
+  release:
+    needs: repack
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: experience-ui-gsi-${{ needs.repack.outputs.build_id }}
+          path: release
+      - name: Create draft pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_ID: ${{ needs.repack.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<EOF
+          Experience UI 1.0 added to a prebuilt LineageOS 18.1 GSI (Android 11, ARM64 A/B system-as-root).
+
+          - Base: \`$(basename "$BASE_URL")\` (AndyYan, ${EXPERIENCE_EDITION}, SHA-256 \`$BASE_SHA256\`).
+            The base's fingerprint, security patch level (2024-01-05) and LineageOS version are unchanged.
+          - Added: the 14 Experience apps (platform-signed), Experience overlays, permissions,
+            boot animation, wallpapers, sounds, ro.experience.* properties.
+          - Static image checks passed (verification.json). **Not boot-tested on any device.**
+
+          Flash only on a device you can recover; see docs/compatibility.md.
+          EOF
+          gh release create "experience-ui-1.0.0-gsi-$BUILD_ID" release/* --draft --prerelease \
+            --title "Experience UI 1.0 GSI $BUILD_ID (prebuilt base, unverified)" \
+            --notes-file notes.md --target "$GITHUB_SHA"

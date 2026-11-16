@@ -113,6 +113,7 @@ def main():
     ap.add_argument("image")
     ap.add_argument("--report")
     ap.add_argument("--expect-build-number")
+    ap.add_argument("--edition", default="Vanilla", help="expected ro.experience.edition (Vanilla or GApps)")
     a = ap.parse_args()
     if shutil.which("debugfs") is None:
         sys.exit("debugfs (e2fsprogs) is required")
@@ -164,7 +165,7 @@ def main():
         info = {k: props.get(k, "") for k in (
             "ro.build.version.release", "ro.build.version.sdk", "ro.build.version.security_patch",
             "ro.build.display.id", "ro.build.fingerprint", "ro.system.build.fingerprint",
-            "ro.system.product.cpu.abilist", "ro.product.system.model", "ro.product.system.brand",
+            "ro.system.product.cpu.abilist", "ro.product.cpu.abilist", "ro.product.system.model", "ro.product.system.brand",
             "ro.experience.version", "ro.experience.display.version", "ro.experience.build.number",
             "ro.experience.edition", "ro.experience.base", "ro.lineage.version",
             "ro.config.ringtone", "ro.config.notification_sound", "ro.config.alarm_alert")}
@@ -172,8 +173,10 @@ def main():
 
         rep.check("Android 11", info["ro.build.version.release"] == "11", info["ro.build.version.release"])
         rep.check("SDK 30", info["ro.build.version.sdk"] == "30", info["ro.build.version.sdk"])
-        rep.check("arm64 ABI first", info["ro.system.product.cpu.abilist"].startswith("arm64-v8a"),
-                  info["ro.system.product.cpu.abilist"])
+        # Android 11 system images record the ABI list as ro.product.cpu.abilist in
+        # /system/build.prop; some builds also emit the partition-qualified name.
+        abilist = info["ro.system.product.cpu.abilist"] or info["ro.product.cpu.abilist"]
+        rep.check("arm64 ABI first", abilist.startswith("arm64-v8a"), abilist)
         rep.check("security patch level recorded", re.fullmatch(r"\d{4}-\d{2}-\d{2}", info["ro.build.version.security_patch"] or "") is not None,
                   info["ro.build.version.security_patch"])
         rep.check("Experience version 1.0.0", info["ro.experience.version"] == "1.0.0", info["ro.experience.version"])
@@ -186,7 +189,7 @@ def main():
         if a.expect_build_number:
             rep.check("build number matches expected", bn == a.expect_build_number, a.expect_build_number)
         rep.check("system model", info["ro.product.system.model"] == "Experience Device", info["ro.product.system.model"])
-        rep.check("edition Vanilla", info["ro.experience.edition"] == "Vanilla")
+        rep.check(f"edition {a.edition}", info["ro.experience.edition"] == a.edition, info["ro.experience.edition"])
         rep.check("default ringtone", info["ro.config.ringtone"] == "Experience_Horizon.ogg", info["ro.config.ringtone"])
         rep.check("default notification sound", info["ro.config.notification_sound"] == "Experience_Bloom.ogg",
                   info["ro.config.notification_sound"])
