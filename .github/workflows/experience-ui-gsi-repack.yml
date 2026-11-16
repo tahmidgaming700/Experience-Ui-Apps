@@ -100,6 +100,36 @@ jobs:
           compression-level: 0
           if-no-files-found: error
           retention-days: 30
+      - name: Build AOSP test-key-signed flashable zip
+        env:
+          BT_GLOB: "/usr/local/lib/android/sdk/build-tools/*"
+        run: |
+          set -euo pipefail
+          sec="https://raw.githubusercontent.com/LineageOS/android_build/lineage-18.1/target/product/security"
+          mkdir -p "$WORK/keys"
+          curl -fsSL "$sec/testkey.pk8" -o "$WORK/keys/testkey.pk8"
+          curl -fsSL "$sec/testkey.x509.pem" -o "$WORK/keys/testkey.x509.pem"
+          openssl pkcs8 -inform DER -in "$WORK/keys/testkey.pk8" -out "$WORK/keys/testkey.key" -nocrypt
+          openssl pkcs12 -export -in "$WORK/keys/testkey.x509.pem" -inkey "$WORK/keys/testkey.key" \
+            -name testkey -out "$WORK/keys/testkey.p12" -passout pass:android
+          name="ExperienceUI-1.0.0-${{ steps.id.outputs.build_id }}-arm64_bgS"
+          python3 -I scripts/gsi/make-flashable-zip.py --image "$WORK/out/image/system.img" \
+            --out "$WORK/out/flashable" --name "$name" \
+            --keystore "$WORK/keys/testkey.p12" --storepass android --alias testkey \
+            --manifest "$WORK/out/image/repack-manifest.json"
+
+      - name: Upload flashable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-ui-flashable-zip-${{ steps.id.outputs.build_id }}
+          path: |
+            /mnt/experience-gsi/out/flashable/*.zip
+            /mnt/experience-gsi/out/flashable/*.sha256
+            /mnt/experience-gsi/out/flashable/*.info.json
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
 
       - name: Upload verification report
         if: always()
