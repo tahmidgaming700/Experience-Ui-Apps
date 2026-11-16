@@ -22,7 +22,9 @@ OUT="${2:-$REPO/out/gsi}"
 : "${ANDROID_HOME:?set ANDROID_HOME}"
 : "${EXPERIENCE_BUILD_ID:=$(date -u +%Y%m%d%H%M)}"
 : "${EXPERIENCE_EDITION:=GApps}"
-BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+# Prefer the build-tools version CI and development use; fall back to the newest installed.
+BT="$ANDROID_HOME/build-tools/35.0.0"
+[[ -x "$BT/apksigner" ]] || BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
 JAR="$ANDROID_HOME/platforms/android-30/android.jar"
 [[ -f "$JAR" ]] || { echo "need platforms;android-30" >&2; exit 1; }
 log() { printf '\033[1;34m[gsi]\033[0m %s\n' "$*" >&2; }

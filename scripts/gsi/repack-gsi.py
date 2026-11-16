@@ -186,8 +186,15 @@ def cert_sha256(apk_or_pem, apksigner=None):
     if apk_or_pem.endswith(".pem"):
         der = subprocess.run(["openssl", "x509", "-in", apk_or_pem, "-outform", "DER"], check=True, capture_output=True).stdout
         return hashlib.sha256(der).hexdigest()
-    out = subprocess.run([apksigner, "verify", "--print-certs", apk_or_pem], check=True, capture_output=True, text=True).stdout
-    return re.search(r"Signer #1 certificate SHA-256 digest: ([0-9a-f]+)", out).group(1)
+    r = subprocess.run([apksigner, "verify", "--print-certs", apk_or_pem], capture_output=True, text=True)
+    # build-tools <= 36 print "Signer #1 certificate SHA-256 digest: ..."; 37+ print
+    # "V3.0 Signer: certificate SHA-256 digest: ..." (one line per signing scheme).
+    digests = set(re.findall(r"^(?:Signer #1|V[\d.]+ Signer):? certificate SHA-256 digest: ([0-9a-f]{64})$",
+                             r.stdout, re.M))
+    if r.returncode != 0 or len(digests) != 1:
+        raise SystemExit(f"cannot read the signing certificate of {apk_or_pem} "
+                         f"(apksigner exit {r.returncode}):\n{r.stdout}{r.stderr}")
+    return digests.pop()
 
 
 def edit_props(fs, path, block):
