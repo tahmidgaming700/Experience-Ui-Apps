@@ -1,0 +1,112 @@
+name: Publish Experience UI GSI release
+
+# Publishes a GitHub pre-release for an Experience UI GSI image from artifacts a prior
+# "Experience UI GSI" (experience-ui-gsi-repack.yml) run already produced, so nothing is
+# rebuilt. Release notes come from docs/releases/experience-ui-1.0.0.md plus a generated
+# "This build" section with the concrete build number and checksums.
+#
+# Pre-release only: the image is not boot-tested, so it is never marked the latest stable
+# release automatically.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run ID of the Experience UI GSI workflow that built the artifacts"
+        required: true
+      tag:
+        description: "Release tag"
+        default: "experience-ui-1.0.0"
+      title:
+        description: "Release title"
+        default: "Experience UI 1.0 (Android 11 GSI) — pre-release"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download GSI image artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: experience-ui-gsi-*
+          path: dl/image
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+
+      - name: Download flashable zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: experience-ui-flashable-zip-*
+          path: dl/zip
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+
+      - name: Assemble release assets
+        id: assets
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          # Reject the report-only artifact (it also matches experience-ui-gsi-*).
+          find dl -type f \( -name '*.img.xz' -o -name '*.zip' -o -name 'repack-manifest.json' \
+                 -o -name 'verification.json' -o -name '*.sha256' \) -exec cp -n {} assets/ \;
+          ls -la assets
+          test -n "$(find assets -name '*.img.xz')" || { echo "::error::no image artifact found for run ${{ inputs.run_id }}"; exit 1; }
+          test -n "$(find assets -name '*.zip')"    || { echo "::error::no flashable zip artifact found for run ${{ inputs.run_id }}"; exit 1; }
+          # One combined SHA256SUMS over the actual release payloads.
+          ( cd assets && rm -f SHA256SUMS && sha256sum ./*.img.xz ./*.zip | sed 's# \./# #' > SHA256SUMS )
+          cat assets/SHA256SUMS
+
+      - name: Compose release notes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, glob, os
+          notes = open("docs/releases/experience-ui-1.0.0.md").read().rstrip() + "\n\n"
+          man = {}
+          for p in glob.glob("assets/repack-manifest.json"):
+              man = json.load(open(p))
+          sums = open("assets/SHA256SUMS").read().strip()
+          notes += "## This build\n\n"
+          if man:
+              notes += f"- Build number: `{man.get('build_number','')}`\n"
+              notes += f"- Base image: `{man.get('base_image','')}`\n"
+              notes += f"- Base SHA-256: `{man.get('base_image_sha256','')}`\n"
+              notes += f"- Platform certificate: `{man.get('platform_certificate_sha256','')[:24]}…` (AOSP test key)\n"
+              notes += f"- Apps installed: {len(man.get('installed_apps',{}))}; overlays: {len(man.get('overlays',[]))}\n"
+          ver = {}
+          for p in glob.glob("assets/verification.json"):
+              ver = json.load(open(p))
+          if ver:
+              passed = sum(1 for c in ver.get("checks", []) if c["ok"])
+              notes += f"- Static image checks: {passed}/{len(ver.get('checks', []))} passed — **not a boot test**\n"
+          notes += "\n### Checksums\n\n```\n" + sums + "\n```\n"
+          notes += ("\n---\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n"
+                    "https://claude.ai/code/session_01686Rfxjgen1Dx6B3SmgmM5\n")
+          open("release-notes.md", "w").write(notes)
+          print(notes)
+          PY
+
+      - name: Create pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='${{ inputs.tag }}'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::release $tag already exists; delete it or choose another tag"
+            exit 1
+          fi
+          gh release create "$tag" assets/* \
+            --prerelease \
+            --title '${{ inputs.title }}' \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA"
+          echo "Published: $(gh release view "$tag" --json url --jq .url)"
