@@ -114,6 +114,8 @@ def cmd_sdat(z, out, parts):
         dst = os.path.join(out, f"{p}.img")
         with z.open(f"{p}.new.dat") as s, open(dst + ".part", "wb") as d:
             d.truncate(max_block * 4096)  # 'zero'/'erase' blocks stay sparse zeros
+            total = sum(e - b for b, e in news) * 4096
+            copied, t0, next_report = 0, time.time(), 512 << 20
             for start, end in news:
                 d.seek(start * 4096)
                 left = (end - start) * 4096
@@ -123,6 +125,11 @@ def cmd_sdat(z, out, parts):
                         raise SystemExit(f"{p}.new.dat ended early")
                     d.write(b)
                     left -= len(b)
+                    copied += len(b)
+                    if copied >= next_report:  # mirror speed varies a lot; log it
+                        rate = copied / max(time.time() - t0, 1e-3) / (1 << 20)
+                        print(f"  {p}: {copied >> 20}/{total >> 20} MiB at {rate:.1f} MiB/s", flush=True)
+                        next_report += 512 << 20
             if s.read(1):
                 raise SystemExit(f"{p}.new.dat has data past its transfer list")
         os.replace(dst + ".part", dst)
