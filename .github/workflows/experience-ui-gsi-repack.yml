@@ -22,9 +22,12 @@ on:
         description: "GApps for arm64_bgS/bgN bases, Vanilla for bvS/bvN"
         default: "GApps"
       publish:
-        description: "Create a draft pre-release"
+        description: "Publish a GitHub pre-release with the image and flashable zip"
         type: boolean
         default: false
+      tag:
+        description: "Release tag (when publishing)"
+        default: "experience-ui-1.0.0"
   push:
     paths:
       - "scripts/gsi/**"
@@ -149,27 +152,61 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
         with:
           name: experience-ui-gsi-${{ needs.repack.outputs.build_id }}
-          path: release
-      - name: Create draft pre-release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BUILD_ID: ${{ needs.repack.outputs.build_id }}
+          path: dl/image
+
+      - name: Download flashable zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: experience-ui-flashable-zip-${{ needs.repack.outputs.build_id }}
+          path: dl/zip
+
+      - name: Assemble assets and release notes
         run: |
           set -euo pipefail
-          cat > notes.md <<EOF
-          Experience UI 1.0 added to a prebuilt LineageOS 18.1 GSI (Android 11, ARM64 A/B system-as-root).
+          mkdir -p assets
+          find dl -type f \( -name '*.img.xz' -o -name '*.zip' -o -name 'repack-manifest.json' \
+                 -o -name 'verification.json' -o -name '*.sha256' \) -exec cp -n {} assets/ \;
+          test -n "$(find assets -name '*.img.xz')" || { echo '::error::no image'; exit 1; }
+          test -n "$(find assets -name '*.zip')"    || { echo '::error::no flashable zip'; exit 1; }
+          ( cd assets && rm -f SHA256SUMS && sha256sum ./*.img.xz ./*.zip | sed 's# \./# #' > SHA256SUMS )
+          python3 - <<'PY'
+          import glob, json
+          notes = open("docs/releases/experience-ui-1.0.0.md").read().rstrip() + "\n\n## This build\n\n"
+          man = next((json.load(open(p)) for p in glob.glob("assets/repack-manifest.json")), {})
+          if man:
+              notes += f"- Build number: `{man.get('build_number','')}`\n"
+              notes += f"- Base image: `{man.get('base_image','')}` (SHA-256 `{man.get('base_image_sha256','')}`)\n"
+              notes += f"- Platform certificate: `{man.get('platform_certificate_sha256','')[:24]}...` (AOSP test key)\n"
+              notes += f"- Apps installed: {len(man.get('installed_apps',{}))}; overlays: {len(man.get('overlays',[]))}\n"
+          ver = next((json.load(open(p)) for p in glob.glob("assets/verification.json")), {})
+          if ver:
+              ok = sum(1 for c in ver.get("checks", []) if c["ok"])
+              notes += f"- Static image checks: {ok}/{len(ver.get('checks', []))} passed - **not a boot test**\n"
+          notes += "\n### Checksums\n\n```\n" + open("assets/SHA256SUMS").read().strip() + "\n```\n"
+          notes += ("\n---\n\U0001F916 Generated with [Claude Code](https://claude.com/claude-code)\n\n"
+                    "https://claude.ai/code/session_01686Rfxjgen1Dx6B3SmgmM5\n")
+          open("release-notes.md", "w").write(notes)
+          PY
+          ls -la assets
 
-          - Base: \`$(basename "$BASE_URL")\` (AndyYan, ${EXPERIENCE_EDITION}, SHA-256 \`$BASE_SHA256\`).
-            The base's fingerprint, security patch level (2024-01-05) and LineageOS version are unchanged.
-          - Added: the 14 Experience apps (platform-signed), Experience overlays, permissions,
-            boot animation, wallpapers, sounds, ro.experience.* properties.
-          - Static image checks passed (verification.json). **Not boot-tested on any device.**
-
-          Flash only on a device you can recover; see docs/compatibility.md.
-          EOF
-          gh release create "experience-ui-1.0.0-gsi-$BUILD_ID" release/* --draft --prerelease \
-            --title "Experience UI 1.0 GSI $BUILD_ID (prebuilt base, unverified)" \
-            --notes-file notes.md --target "$GITHUB_SHA"
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='${{ inputs.tag }}'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::release $tag already exists; choose another tag or delete it"
+            exit 1
+          fi
+          gh release create "$tag" assets/* \
+            --prerelease \
+            --title "Experience UI 1.0 (Android 11 GSI) - pre-release" \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA"
+          echo "Published: $(gh release view "$tag" --json url --jq .url)"
