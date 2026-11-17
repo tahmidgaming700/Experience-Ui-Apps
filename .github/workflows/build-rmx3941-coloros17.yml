@@ -34,7 +34,7 @@ concurrency:
 jobs:
   port:
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 355   # GitHub-hosted maximum is 360; downloads depend on mirror speed
     permissions:
       contents: write   # draft release only
     steps:

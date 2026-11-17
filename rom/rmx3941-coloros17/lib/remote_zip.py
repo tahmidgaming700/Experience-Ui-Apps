@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read members of a large remote zip over HTTP range requests.
+"""Read members of a large remote zip over HTTP range requests (or a local zip).
 
 Both firmware packages are far bigger than the disk a CI runner has free,
 and the port only needs some of their members, so nothing downloads the
@@ -15,14 +15,46 @@ import os
 import shutil
 import sys
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 
 CHUNK = 8 << 20
 
 
+SF_MIRRORS = ["gigenet", "deac-riga", "deac-fra", "altushost-net", "razaoinfo", "netix",
+              "freefr", "phoenixnap", "cytranet-dal"]
+
+
+def pick_sourceforge_mirror(url):
+    """SourceForge mirrors differ by 10x in speed and change hour to hour.
+    For a downloads.sourceforge.net URL without use_mirror=, time a 4 MiB
+    range from each mirror and use the fastest."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.hostname != "downloads.sourceforge.net" or "use_mirror=" in parts.query:
+        return url
+    best, best_rate = url, 0.0
+    for m in SF_MIRRORS:
+        cand = urllib.parse.urlunsplit(parts._replace(query=f"use_mirror={m}"))
+        try:
+            t = time.time()
+            req = urllib.request.Request(cand, headers={"Range": "bytes=1000000000-1004194303"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                n = len(r.read())
+            rate = n / max(time.time() - t, 1e-3) / (1 << 20)
+        except Exception as e:
+            print(f"mirror {m}: {e}", file=sys.stderr)
+            continue
+        print(f"mirror {m}: {rate:.1f} MiB/s", file=sys.stderr)
+        if n == 4 << 20 and rate > best_rate:
+            best, best_rate = cand, rate
+    print(f"using {best}", file=sys.stderr)
+    return best
+
+
 class HttpFile(io.RawIOBase):
     def __init__(self, url):
+        url = pick_sourceforge_mirror(url)
         self.url, self.pos = url, 0
         req = urllib.request.Request(url, method="HEAD")
         with urllib.request.urlopen(req, timeout=120) as r:
@@ -43,32 +75,54 @@ class HttpFile(io.RawIOBase):
 
     def seek(self, off, whence=0):
         self.pos = {0: off, 1: self.pos + off, 2: self.size + off}[whence]
-        return self.pos
+        return self.pos  # a stream at another offset is reopened on the next read
+
+    def _open_stream(self):
+        """One open-ended range request from the current position. Reads that
+        continue where the last one stopped keep using it: a member is then
+        fetched as one long stream, which mirrors serve ~10x faster than a
+        new request per chunk."""
+        self._close_stream()
+        req = urllib.request.Request(self.url, headers={"Range": f"bytes={self.pos}-"})
+        self._resp = urllib.request.urlopen(req, timeout=120)
+        if self._resp.status != 206:
+            raise IOError(f"server ignored the range request (HTTP {self._resp.status})")
+        self._resp_pos = self.pos
+
+    def _close_stream(self):
+        if getattr(self, "_resp", None) is not None:
+            self._resp.close()
+        self._resp, self._resp_pos = None, -1
 
     def readinto(self, buf):
         n = min(len(buf), self.size - self.pos)
         if n <= 0:
             return 0
-        rng = f"bytes={self.pos}-{self.pos + n - 1}"
-        for attempt in range(6):
+        view = memoryview(buf)[:n]
+        done, failures = 0, 0
+        while done < n:
             try:
-                req = urllib.request.Request(self.url, headers={"Range": rng})
-                with urllib.request.urlopen(req, timeout=300) as r:
-                    data = r.read()
-                if len(data) != n:
-                    raise IOError(f"short range read {len(data)}/{n}")
-                break
-            except Exception as e:  # network hiccup: back off and retry
-                if attempt == 5:
+                if getattr(self, "_resp", None) is None or self._resp_pos != self.pos:
+                    self._open_stream()
+                got = self._resp.readinto(view[done:])
+                if not got:
+                    raise IOError("connection closed early")
+                done += got
+                self.pos += got
+                self._resp_pos += got
+            except Exception as e:  # network hiccup: reopen at the current position
+                self._close_stream()
+                failures += 1
+                if failures > 8:
                     raise
-                print(f"retry {attempt + 1} after {e}", file=sys.stderr)
-                time.sleep(2 ** attempt)
-        buf[:n] = data
-        self.pos += n
+                print(f"retry {failures} at byte {self.pos} after {e}", file=sys.stderr)
+                time.sleep(min(2 ** failures, 60))
         return n
 
 
 def open_zip(url):
+    if os.path.isfile(url):  # a local copy (port.sh may download the donor whole)
+        return zipfile.ZipFile(url)
     return zipfile.ZipFile(io.BufferedReader(HttpFile(url), buffer_size=CHUNK))
 
 
