@@ -58,7 +58,7 @@ grep -q "^ro.product.model=$DEVICE_MODEL$" "$B/build.prop" || { echo "base is no
 
 log "base: unsparse super partitions"
 for p in $BASE_SUPER; do
-  if head -c4 "$B/$p.img" | od -An -tx1 | grep -q '3a ff 26 ed'; then
+  if [ "$(od -An -tx1 -N4 "$B/$p.img" | tr -d ' ')" = 3aff26ed ]; then  # sparse magic
     simg2img "$B/$p.img" "$B/$p.raw" && mv "$B/$p.raw" "$B/$p.img"
   fi
 done
