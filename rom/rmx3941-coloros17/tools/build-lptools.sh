@@ -34,6 +34,10 @@ INC="-Icore/fs_mgr/liblp/include -Icore/fs_mgr/liblp -Icore/libsparse/include -I
      -Ilogging/liblog/include -Ilogging/liblog -Iextras/ext4_utils/include
      -Icore/fs_mgr/libstorage_literals -Icore/libcutils/include"
 CXXFLAGS="-O2 -std=gnu++20 -D_FILE_OFFSET_BITS=64 -w $INC"
+# liblp and partition_tools use std::find/std::sort without including
+# <algorithm>; older libstdc++ headers pulled it in transitively, GCC 14's
+# do not. Only those files get it: libbase's posix_strerror_r.cpp must not.
+EXTRA_LP="-include algorithm"
 
 SRCS=(
   core/fs_mgr/liblp/{builder,images,partition_opener,property_fetcher,reader,utility,writer,super_layout_builder}.cpp
@@ -47,10 +51,11 @@ mkdir -p obj
 OBJS=()
 for f in "${SRCS[@]}"; do
   o=obj/$(echo "$f" | tr / _).o
-  [ -f "$o" ] || clang++ $CXXFLAGS -c "$f" -o "$o"
+  extra=""; case "$f" in core/fs_mgr/liblp/*) extra=$EXTRA_LP ;; esac
+  [ -f "$o" ] || clang++ $CXXFLAGS $extra -c "$f" -o "$o"
   OBJS+=("$o")
 done
 for tool in lpmake lpunpack; do
-  clang++ $CXXFLAGS "extras/partition_tools/$tool.cc" "${OBJS[@]}" -o "$BIN/$tool" -lcrypto -lz -lfmt
+  clang++ $CXXFLAGS $EXTRA_LP "extras/partition_tools/$tool.cc" "${OBJS[@]}" -o "$BIN/$tool" -lcrypto -lz -lfmt
 done
 "$BIN/lpmake" 2>&1 | head -1
