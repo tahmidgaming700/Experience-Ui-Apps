@@ -68,6 +68,7 @@ DONOR_PARTS="system system_ext product my_product my_stock my_region my_manifest
 need=(); for p in $DONOR_PARTS; do [ -f "$D/$p.img" ] || need+=("$p"); done
 [ ${#need[@]} -eq 0 ] || $PY "$LIB/remote_zip.py" sdat "$DONOR_URL" "$D" "${need[@]}"
 for p in $DONOR_PARTS; do fsck.erofs "$D/$p.img" >/dev/null || { echo "donor $p is not a valid EROFS image"; exit 1; }; done
+if [ "${FETCH_ONLY:-0}" = 1 ]; then log "inputs fetched and verified (FETCH_ONLY)"; exit 0; fi
 
 log "metadata (SELinux labels, owners, modes) of the original images"
 for p in my_manifest my_product system_ext; do $PY "$LIB/erofs_meta.py" dump "$D/$p.img" "$M/donor_$p.tsv"; done
