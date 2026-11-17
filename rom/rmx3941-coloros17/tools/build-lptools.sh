@@ -58,4 +58,7 @@ done
 for tool in lpmake lpunpack; do
   clang++ $CXXFLAGS $EXTRA_LP "extras/partition_tools/$tool.cc" "${OBJS[@]}" -o "$BIN/$tool" -lcrypto -lz -lfmt
 done
-"$BIN/lpmake" 2>&1 | head -1
+# Smoke test: with no arguments lpmake prints its usage and exits 64 (EX_USAGE).
+usage=$("$BIN/lpmake" 2>&1 || true)
+grep -q "Logical Partition" <<<"$usage" || { echo "lpmake did not run"; exit 1; }
+echo "built: $BIN/lpmake $BIN/lpunpack"
