@@ -20,6 +20,7 @@ import urllib.request
 import zipfile
 
 CHUNK = 8 << 20
+MIN_RATE = 256 << 10  # bytes/s; slower streams are reopened
 
 
 SF_MIRRORS = ["gigenet", "deac-riga", "deac-fra", "altushost-net", "razaoinfo", "netix",
@@ -56,13 +57,22 @@ class HttpFile(io.RawIOBase):
     def __init__(self, url):
         url = pick_sourceforge_mirror(url)
         self.url, self.pos = url, 0
-        req = urllib.request.Request(url, method="HEAD")
-        with urllib.request.urlopen(req, timeout=120) as r:
-            # Pin the mirror a redirect picked, so every range comes from one file.
-            self.url = r.geturl()
-            self.size = int(r.headers["Content-Length"])
-            if r.headers.get("Accept-Ranges", "bytes") != "bytes":
-                raise SystemExit(f"server does not support range requests: {url}")
+        for attempt in range(1, 7):
+            try:
+                req = urllib.request.Request(url, method="HEAD")
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    # Pin the mirror a redirect picked, so every range comes from one file.
+                    self.url = r.geturl()
+                    self.size = int(r.headers["Content-Length"])
+                    ranges = r.headers.get("Accept-Ranges", "bytes")
+                break
+            except Exception as e:
+                if attempt == 6:
+                    raise
+                print(f"HEAD retry {attempt} after {e}", file=sys.stderr)
+                time.sleep(2 ** attempt)
+        if ranges != "bytes":
+            raise SystemExit(f"server does not support range requests: {url}")
 
     def readable(self):
         return True
@@ -84,10 +94,11 @@ class HttpFile(io.RawIOBase):
         new request per chunk."""
         self._close_stream()
         req = urllib.request.Request(self.url, headers={"Range": f"bytes={self.pos}-"})
-        self._resp = urllib.request.urlopen(req, timeout=120)
+        self._resp = urllib.request.urlopen(req, timeout=60)
         if self._resp.status != 206:
             raise IOError(f"server ignored the range request (HTTP {self._resp.status})")
         self._resp_pos = self.pos
+        self._opened_at, self._opened_pos = time.time(), self.pos
 
     def _close_stream(self):
         if getattr(self, "_resp", None) is not None:
@@ -110,6 +121,11 @@ class HttpFile(io.RawIOBase):
                 done += got
                 self.pos += got
                 self._resp_pos += got
+                # A connection that trickles (a throttled mirror) never trips the
+                # socket timeout; reopen it if it averages under MIN_RATE.
+                age = time.time() - self._opened_at
+                if age > 90 and (self.pos - self._opened_pos) / age < MIN_RATE:
+                    raise IOError(f"stream slower than {MIN_RATE >> 10} KiB/s for {age:.0f}s")
             except Exception as e:  # network hiccup: reopen at the current position
                 self._close_stream()
                 failures += 1

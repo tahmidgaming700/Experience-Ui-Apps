@@ -54,7 +54,29 @@ jobs:
           sudo apt-get install -y -qq clang libssl-dev zlib1g-dev libfmt-dev \
             erofs-utils android-sdk-libsparse-utils zstd
 
+      - name: Network check
+        timeout-minutes: 3
+        run: |
+          # 20 s of each firmware host, so a slow route shows up in the log
+          # before the long download starts.
+          source rom/rmx3941-coloros17/config.env
+          for u in "$BASE_URL" "${{ github.event.inputs.donor_url }}" "$DONOR_URL"; do
+            [ -n "$u" ] || continue
+            curl -sSL -o /dev/null --max-time 20 -w "%{speed_download} B/s  %{url_effective}\n" "$u" || true
+          done
+
+      - name: Fetch firmware
+        timeout-minutes: 150
+        env:
+          DONOR_URL: ${{ github.event.inputs.donor_url }}
+          FETCH_ONLY: "1"
+        run: |
+          [ -n "$DONOR_URL" ] || unset DONOR_URL
+          sudo -E env "PATH=$PATH" bash rom/rmx3941-coloros17/port.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/out" 2>&1 | tee "$RUNNER_TEMP/fetch.log"
+          exit ${PIPESTATUS[0]}
+
       - name: Build the port
+        timeout-minutes: 60
         env:
           DONOR_URL: ${{ github.event.inputs.donor_url }}
         run: |
@@ -67,13 +89,13 @@ jobs:
           sudo rm -rf "$RUNNER_TEMP/work"
           mkdir -p dist
           cp rom/rmx3941-coloros17/README.md "$RUNNER_TEMP/out/README.md"
-          cp "$RUNNER_TEMP/port.log" "$RUNNER_TEMP/out/port.log"
+          cat "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/port.log" > "$RUNNER_TEMP/out/port.log"
           NAME=RMX3941-ColorOS17-port
           sudo tar -C "$RUNNER_TEMP/out" -cf - . | zstd -T0 -6 --long=27 \
             | split -b 1900M -d -a 2 - "dist/$NAME.tar.zst.part"
           sudo rm -rf "$RUNNER_TEMP/out"
           (cd dist && sha256sum $NAME.tar.zst.part* > SHA256SUMS)
-          cp "$RUNNER_TEMP/port.log" dist/port.log
+          cp "$RUNNER_TEMP/out/port.log" dist/port.log 2>/dev/null || cat "$RUNNER_TEMP"/fetch.log "$RUNNER_TEMP"/port.log > dist/port.log
           ls -la dist
 
       - name: Upload build log
