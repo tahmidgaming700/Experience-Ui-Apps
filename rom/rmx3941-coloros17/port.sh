@@ -66,8 +66,25 @@ done
 log "donor: stream partitions out of the OTA"
 DONOR_PARTS="system system_ext product my_product my_stock my_region my_manifest my_heytap my_carrier my_bigball my_engineering"
 need=(); for p in $DONOR_PARTS; do [ -f "$D/$p.img" ] || need+=("$p"); done
-[ ${#need[@]} -eq 0 ] || $PY "$LIB/remote_zip.py" sdat "$DONOR_URL" "$D" "${need[@]}"
+DONOR_SRC=$DONOR_URL
+if [ ${#need[@]} -gt 0 ] && command -v aria2c >/dev/null; then
+  # SourceForge mirrors cap each connection (~1 MiB/s seen on CI), so one
+  # stream takes hours. aria2c pulls the whole zip over 16 connections spread
+  # across several mirrors (~25 MiB/s measured), then it is read locally.
+  # The zip's CRC-32s are checked as members are extracted.
+  if [ ! -f "$WORK/donor.zip.done" ]; then
+    mapfile -t uris < <($PY "$LIB/remote_zip.py" mirrors "$DONOR_URL")
+    aria2c -x16 -s16 -k8M --max-tries=10 --retry-wait=10 --file-allocation=none \
+      --summary-interval=60 --console-log-level=warn \
+      ${CURL_CA_BUNDLE:+--ca-certificate="$CURL_CA_BUNDLE"} \
+      -d "$WORK" -o donor.zip "${uris[@]}"
+    touch "$WORK/donor.zip.done"
+  fi
+  DONOR_SRC=$WORK/donor.zip
+fi
+[ ${#need[@]} -eq 0 ] || $PY "$LIB/remote_zip.py" sdat "$DONOR_SRC" "$D" "${need[@]}"
 for p in $DONOR_PARTS; do fsck.erofs "$D/$p.img" >/dev/null || { echo "donor $p is not a valid EROFS image"; exit 1; }; done
+rm -f "$WORK/donor.zip" "$WORK/donor.zip.done"   # partitions extracted; free ~9 GB
 if [ "${FETCH_ONLY:-0}" = 1 ]; then log "inputs fetched and verified (FETCH_ONLY)"; exit 0; fi
 
 log "metadata (SELinux labels, owners, modes) of the original images"
