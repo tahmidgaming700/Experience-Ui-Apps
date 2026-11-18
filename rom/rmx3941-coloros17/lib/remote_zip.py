@@ -9,6 +9,9 @@ corrupted transfer raises instead of producing a bad image.
   remote_zip.py list    <url>
   remote_zip.py get     <url> <out-dir> <member>...       # writes <out-dir>/<basename>
   remote_zip.py sdat    <url> <out-dir> <partition>...    # <p>.new.dat + <p>.transfer.list -> <out-dir>/<p>.img
+  remote_zip.py mirrors <url>                             # SourceForge mirror URLs, one per line
+
+<url> may also be a local zip file.
 """
 import io
 import os
@@ -206,10 +209,22 @@ def cmd_sdat(z, out, parts):
         print("done", p, max_block * 4096, flush=True)
 
 
+def mirror_urls(url):
+    """Every SourceForge mirror URL for a downloads.sourceforge.net link, for
+    a multi-source downloader; any other URL as is."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.hostname != "downloads.sourceforge.net" or "use_mirror=" in parts.query:
+        return [url]
+    return [urllib.parse.urlunsplit(parts._replace(query=f"use_mirror={m}")) for m in SF_MIRRORS]
+
+
 def main():
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
     cmd, url = sys.argv[1], sys.argv[2]
+    if cmd == "mirrors":
+        print("\n".join(mirror_urls(url)))
+        return
     z = open_zip(url)
     if cmd == "list":
         cmd_list(z)

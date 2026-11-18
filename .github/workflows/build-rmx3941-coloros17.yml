@@ -52,7 +52,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq clang libssl-dev zlib1g-dev libfmt-dev \
-            erofs-utils android-sdk-libsparse-utils zstd
+            erofs-utils android-sdk-libsparse-utils zstd aria2
 
       - name: Network check
         timeout-minutes: 3
