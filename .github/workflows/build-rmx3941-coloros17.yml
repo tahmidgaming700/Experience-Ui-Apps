@@ -88,14 +88,15 @@ jobs:
         run: |
           sudo rm -rf "$RUNNER_TEMP/work"
           mkdir -p dist
-          cp rom/rmx3941-coloros17/README.md "$RUNNER_TEMP/out/README.md"
-          cat "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/port.log" > "$RUNNER_TEMP/out/port.log"
+          OUT="$RUNNER_TEMP/out"
+          # port.sh ran as root, so the output folder is root-owned: write into it with sudo.
+          cat "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/port.log" > dist/port.log
+          sudo cp rom/rmx3941-coloros17/README.md dist/port.log "$OUT/"
           NAME=RMX3941-ColorOS17-port
-          sudo tar -C "$RUNNER_TEMP/out" -cf - . | zstd -T0 -6 --long=27 \
+          sudo tar -C "$OUT" -cf - . | zstd -T0 -6 --long=27 \
             | split -b 1900M -d -a 2 - "dist/$NAME.tar.zst.part"
-          sudo rm -rf "$RUNNER_TEMP/out"
+          sudo rm -rf "$OUT"
           (cd dist && sha256sum $NAME.tar.zst.part* > SHA256SUMS)
-          cp "$RUNNER_TEMP/out/port.log" dist/port.log 2>/dev/null || cat "$RUNNER_TEMP"/fetch.log "$RUNNER_TEMP"/port.log > dist/port.log
           ls -la dist
 
       - name: Upload build log
