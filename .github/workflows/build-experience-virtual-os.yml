@@ -81,6 +81,31 @@ jobs:
             runtime-dist/runtime-info.json
           if-no-files-found: error
 
+  engine:
+    # Experimental native-engine prototype (gVisor runsc for Android arm64).
+    # Not used by the app yet; see docs/experience-virtual-os-native-engine.md.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+
+      - name: Build patched gVisor runsc (linux/arm64, static)
+        run: bash scripts/build-experience-gvisor-engine.sh engine-dist
+
+      - name: Upload engine prototype
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-virtual-os-engine-prototype
+          path: engine-dist/
+          if-no-files-found: error
+
   android:
     runs-on: ubuntu-24.04
     needs: runtime
@@ -209,7 +234,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.release_tag != ''
-    needs: [runtime, android]
+    needs: [runtime, android, engine]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -225,6 +250,8 @@ jobs:
       - name: Re-verify assets and write release notes
         run: |
           set -euo pipefail
+          (cd dist/experience-virtual-os-engine-prototype && sha256sum -c ENGINE-SHA256SUMS)
+          cp dist/experience-virtual-os-engine-prototype/runsc-arm64 dist/runsc-arm64-engine-prototype
           cd dist/experience-virtual-os-runtime
           sha256sum -c SHA256SUMS
           python3 - <<'PY'
@@ -259,6 +286,9 @@ jobs:
           * **Android system images**: experimental, console only. Kernel, init and native services start on QEMU `virt`; there is no display because the images' graphics require the Android Emulator's goldfish pipe.
           * This runtime is **not** the Android Emulator and does not provide Google Play or Android app support.
 
+          ### Experimental: native engine prototype
+          `runsc-arm64-engine-prototype` is gVisor's `runsc` built for Android arm64 with this project's patches. It is a research artifact and is **not used by the app**: on Android it currently stops at "cannot create gofer process" because Android kernels have no user namespaces. See docs/experience-virtual-os-native-engine.md for the results and roadmap.
+
           See docs/experience-virtual-os-guest-compatibility.md for the full matrix.
           """
           pathlib.Path("../release-notes.md").write_text(notes)
@@ -282,3 +312,6 @@ jobs:
             dist/experience-virtual-os-runtime/manifest.json
             dist/experience-virtual-os-apk/experience-virtual-os-release*.apk
             dist/experience-virtual-os-apk/APK-SHA256SUMS
+            dist/runsc-arm64-engine-prototype
+            dist/experience-virtual-os-engine-prototype/ENGINE-SHA256SUMS
+            dist/experience-virtual-os-engine-prototype/engine-info.json

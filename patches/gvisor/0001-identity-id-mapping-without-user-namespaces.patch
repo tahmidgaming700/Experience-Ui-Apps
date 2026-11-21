@@ -1,0 +1,16 @@
+diff --git a/runsc/container/container.go b/runsc/container/container.go
+index 858d0f8..c2bf85e 100644
+--- a/runsc/container/container.go
++++ b/runsc/container/container.go
+@@ -2676,6 +2676,11 @@ func getIdentityMapping(mapFileName string) ([]specs.LinuxIDMapping, error) {
+ 	// are organized.
+ 	mapFile := path.Join("/proc/self", mapFileName)
+ 	file, err := os.Open(mapFile)
++	if os.IsNotExist(err) {
++		// Kernel built without CONFIG_USER_NS (e.g. Android): every process is
++		// in the initial user namespace, i.e. a full identity mapping.
++		return []specs.LinuxIDMapping{{ContainerID: 0, HostID: 0, Size: math.MaxUint32}}, nil
++	}
+ 	if err != nil {
+ 		return nil, fmt.Errorf("failed to open %s: %v", mapFile, err)
+ 	}

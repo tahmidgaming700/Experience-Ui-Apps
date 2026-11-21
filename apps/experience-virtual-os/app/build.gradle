@@ -13,8 +13,8 @@ android {
         applicationId 'com.experience.virtualos'
         minSdk 28
         targetSdk 35
-        versionCode 7
-        versionName '0.7.0'
+        versionCode 8
+        versionName '0.7.1'
         // Only ARM64 hosts are supported: the bundled PRoot and the runtime
         // archive are arm64-v8a builds.
         ndk { abiFilters 'arm64-v8a' }
