@@ -89,10 +89,27 @@ class NativeEngine(
             pb.directory(engineDir)
         }
 
-    /** Runs runsc with [args] and returns (exit code, combined output). */
-    fun runsc(args: List<String>, timeoutSeconds: Long = 120, debugName: String? = null): Pair<Int, String> {
+    /**
+     * Runs runsc with [args] and returns (exit code, combined output).
+     *
+     * With [outputFile], output goes to that file instead of a pipe. Use it
+     * for `run --detach`: the sandbox inherits runsc's stdio and outlives it,
+     * so a pipe would never reach end-of-file.
+     */
+    fun runsc(args: List<String>, timeoutSeconds: Long = 120, debugName: String? = null, outputFile: File? = null): Pair<Int, String> {
         prepare()
-        val p = processBuilder(baseCommand(debugName) + args).start()
+        val pb = processBuilder(baseCommand(debugName) + args).redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+        if (outputFile != null) {
+            outputFile.parentFile?.mkdirs()
+            pb.redirectOutput(outputFile)
+            val p = pb.start()
+            val finished = p.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            if (!finished) p.destroyForcibly()
+            val text = outputFile.takeIf { it.isFile }?.readText()?.takeLast(64_000).orEmpty()
+            if (!finished) throw IOException("Native engine timed out after ${timeoutSeconds}s.\n$text")
+            return p.exitValue() to text
+        }
+        val p = pb.start()
         val out = StringBuilder()
         val reader = Thread {
             p.inputStream.bufferedReader().useLines { lines -> lines.forEach { if (out.length < 64_000) out.append(it).append('\n') } }
@@ -120,7 +137,8 @@ class NativeEngine(
     /** Starts [id] in the background; runsc returns once it is running. */
     fun start(id: String, bundleDir: File): String {
         runsc(listOf("delete", "--force", id), 30) // stale state from a crash
-        val (code, out) = runsc(listOf("run", "--detach", "--bundle", bundleDir.absolutePath, id), 180, debugName = id)
+        val (code, out) = runsc(listOf("run", "--detach", "--bundle", bundleDir.absolutePath, id), 180, debugName = id,
+            outputFile = File(logDir, "$id.start.log"))
         if (code != 0) throw IOException("The native engine could not start the container (exit $code).\n${out.trim()}")
         return out
     }

@@ -162,6 +162,178 @@ index 0000000..6ecacac
 +	}
 +	return s[i+2] != 'Z' && s[i+2] != 'X'
 +}
+diff --git a/pkg/hostcompat/trap.go b/pkg/hostcompat/trap.go
+new file mode 100644
+index 0000000..48e83bf
+--- /dev/null
++++ b/pkg/hostcompat/trap.go
+@@ -0,0 +1,72 @@
++// Copyright 2026 The Experience Virtual OS Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++//go:build linux && (amd64 || arm64)
++
++package hostcompat
++
++import (
++	"fmt"
++	"os"
++
++	"golang.org/x/sys/unix"
++	"gvisor.dev/gvisor/pkg/sighandling"
++)
++
++// OnAndroid reports whether this process runs on an Android host.
++var OnAndroid = detectAndroid()
++
++// TrapEmulationEnabled reports whether seccomp-trapped host system calls
++// return ENOSYS in this process (see init).
++var TrapEmulationEnabled bool
++
++// savedSigsysHandler is the Go runtime's SIGSYS handler, used for SIGSYS
++// signals that do not come from a seccomp filter.
++var savedSigsysHandler uintptr
++
++// sigsysTrapHandler is implemented in assembly. For SIGSYS with si_code
++// SYS_SECCOMP it sets the trapped system call's return value to -ENOSYS and
++// returns; otherwise it jumps to savedSigsysHandler.
++func sigsysTrapHandler()
++
++// addrOfSigsysTrapHandler returns the address of sigsysTrapHandler.
++func addrOfSigsysTrapHandler() uintptr
++
++func detectAndroid() bool {
++	_, err := os.Stat("/system/bin/linker64")
++	return err == nil
++}
++
++// Android starts every app process with a seccomp filter that allows only
++// the system calls of its platform version and sends SIGSYS
++// (SECCOMP_RET_TRAP) for anything else, including calls that are simply too
++// new for that release: openat2, pidfd_send_signal, close_range, faccessat2,
++// io_uring_*, clone3 on Android 11. The Go runtime treats SIGSYS as fatal,
++// so a single such call (gVisor probes several; the Go standard library
++// probes pidfd_send_signal before starting a process) kills the engine. With
++// emulation enabled those calls fail with ENOSYS, exactly as on a kernel that
++// lacks them, and the fallbacks in this package and in gVisor take over.
++//
++// This must be installed before any such call, hence in init. It is enabled
++// on Android hosts, or when GVISOR_EMULATE_SECCOMP_TRAP=1 (for tests).
++func init() {
++	if !OnAndroid && os.Getenv("GVISOR_EMULATE_SECCOMP_TRAP") != "1" {
++		return
++	}
++	if err := sighandling.ReplaceSignalHandler(unix.SIGSYS, addrOfSigsysTrapHandler(), &savedSigsysHandler); err != nil {
++		fmt.Fprintf(os.Stderr, "hostcompat: cannot install SIGSYS handler: %v\n", err)
++		return
++	}
++	TrapEmulationEnabled = true
++}
+diff --git a/pkg/hostcompat/trap_amd64.s b/pkg/hostcompat/trap_amd64.s
+new file mode 100644
+index 0000000..0ea1e9e
+--- /dev/null
++++ b/pkg/hostcompat/trap_amd64.s
+@@ -0,0 +1,40 @@
++// Copyright 2026 The Experience Virtual OS Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include "textflag.h"
++
++// siginfo_t.si_code
++#define SIGINFO_CODE 8
++// SYS_SECCOMP
++#define SYS_SECCOMP 1
++// ucontext_t.uc_mcontext.gregs[REG_RAX] (gregs at 40, RAX is index 13).
++#define UCONTEXT_RAX 144
++#define ENOSYS 38
++
++// Called by the kernel with DI = signal number, SI = siginfo_t *,
++// DX = ucontext_t *; the return address is the sa_restorer trampoline.
++TEXT ·sigsysTrapHandler(SB),NOSPLIT|NOFRAME,$0
++	CMPL	SIGINFO_CODE(SI), $SYS_SECCOMP
++	JNE	fallback
++	MOVQ	$-ENOSYS, UCONTEXT_RAX(DX)
++	RET
++fallback:
++	MOVQ	·savedSigsysHandler(SB), AX
++	JMP	AX
++
++// func addrOfSigsysTrapHandler() uintptr
++TEXT ·addrOfSigsysTrapHandler(SB), $0-8
++	MOVQ	$·sigsysTrapHandler(SB), AX
++	MOVQ	AX, ret+0(FP)
++	RET
+diff --git a/pkg/hostcompat/trap_arm64.s b/pkg/hostcompat/trap_arm64.s
+new file mode 100644
+index 0000000..06e4ae6
+--- /dev/null
++++ b/pkg/hostcompat/trap_arm64.s
+@@ -0,0 +1,42 @@
++// Copyright 2026 The Experience Virtual OS Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include "textflag.h"
++
++// siginfo_t.si_code
++#define SIGINFO_CODE 8
++// SYS_SECCOMP
++#define SYS_SECCOMP 1
++// ucontext_t.uc_mcontext.regs[0] (uc_mcontext is at 176, after fault_address).
++#define UCONTEXT_X0 184
++#define ENOSYS 38
++
++// Called by the kernel with R0 = signal number, R1 = siginfo_t *,
++// R2 = ucontext_t *, LR = sigreturn trampoline.
++TEXT ·sigsysTrapHandler(SB),NOSPLIT|NOFRAME,$0
++	MOVWU	SIGINFO_CODE(R1), R7
++	CMPW	$SYS_SECCOMP, R7
++	BNE	fallback
++	MOVD	$-ENOSYS, R7
++	MOVD	R7, UCONTEXT_X0(R2)
++	RET
++fallback:
++	MOVD	·savedSigsysHandler(SB), R7
++	B	(R7)
++
++// func addrOfSigsysTrapHandler() uintptr
++TEXT ·addrOfSigsysTrapHandler(SB), $0-8
++	MOVD	$·sigsysTrapHandler(SB), R0
++	MOVD	R0, ret+0(FP)
++	RET
 diff --git a/pkg/sentry/fsimpl/gofer/directfs_inode.go b/pkg/sentry/fsimpl/gofer/directfs_inode.go
 index bea74a7..1e312ab 100644
 --- a/pkg/sentry/fsimpl/gofer/directfs_inode.go
@@ -252,6 +424,45 @@ index 83ee4cf..81cc9e5 100644
  	if linuxerr.Equals(linuxerr.ENOSYS, err) {
  		// Fallback to fstat(2), if statx(2) is not supported on the host.
  		//
+diff --git a/pkg/sentry/platform/ptrace/ptrace.go b/pkg/sentry/platform/ptrace/ptrace.go
+index faa6c39..082acd7 100644
+--- a/pkg/sentry/platform/ptrace/ptrace.go
++++ b/pkg/sentry/platform/ptrace/ptrace.go
+@@ -252,6 +252,7 @@ func New() (*PTrace, error) {
+ func NewWithOptions(opts platform.Options) (*PTrace, error) {
+ 	mbCh := hostmm.Probe(false)
+ 	stubInitialized.Do(func() {
++		configureAddressSpace()
+ 		// Initialize the stub.
+ 		stubInit()
+ 		opts.StartupTimer.Reached("ptrace stub initialized")
+diff --git a/pkg/sentry/platform/ptrace/ptrace_amd64.go b/pkg/sentry/platform/ptrace/ptrace_amd64.go
+index e30c8af..6cb8fd8 100644
+--- a/pkg/sentry/platform/ptrace/ptrace_amd64.go
++++ b/pkg/sentry/platform/ptrace/ptrace_amd64.go
+@@ -72,3 +72,6 @@ func (t *thread) getTLS(tls *uint64) error {
+ func (t *thread) setTLS(tls *uint64) error {
+ 	return nil
+ }
++
++// configureAddressSpace is a no-op on amd64: the layout is fixed.
++func configureAddressSpace() {}
+diff --git a/pkg/sentry/platform/ptrace/ptrace_arm64.go b/pkg/sentry/platform/ptrace/ptrace_arm64.go
+index 0c12dfa..8b6df61 100644
+--- a/pkg/sentry/platform/ptrace/ptrace_arm64.go
++++ b/pkg/sentry/platform/ptrace/ptrace_arm64.go
+@@ -47,3 +47,11 @@ func (a *archContext) floatingPointRegSet() uintptr {
+ func stackPointer(r *arch.Registers) uintptr {
+ 	return uintptr(r.Sp)
+ }
++
++// configureAddressSpace sets the arch address-space layout for the host's
++// virtual address size, as systrap does. Without it, 39-bit VA hosts (common
++// on Android) keep the 48-bit defaults and mmap layouts can fall outside the
++// address space ("Invalid MmapLayout").
++func configureAddressSpace() {
++	arch.ConfigureAddressSpace(uintptr(linux.TaskSize))
++}
 diff --git a/runsc/cmd/gofer.go b/runsc/cmd/gofer.go
 index f9646d5..ba0d3f2 100644
 --- a/runsc/cmd/gofer.go
