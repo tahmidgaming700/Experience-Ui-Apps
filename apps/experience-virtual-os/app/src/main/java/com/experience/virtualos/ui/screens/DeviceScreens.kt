@@ -238,7 +238,7 @@ fun DeviceEditorScreen(vm: AppViewModel, deviceId: String?, onBack: () -> Unit, 
                     }
                 }
                 if (d.kind == GuestKind.LINUX_CONTAINER) {
-                    Notice("Native engine (experimental): runs the runtime's Ubuntu userspace directly on this phone's CPU under gVisor — no CPU emulation, so it starts in seconds and runs at near-native speed. It is a Linux container, not a full VM: there is no display or UEFI, and changes outside /root are reset when it stops. Commands run from the device's console.", Tone.INFO)
+                    Notice("Native engine (experimental): runs the runtime's Ubuntu userspace directly on this phone's CPU under gVisor — no CPU emulation and no boot, so programs run on the real CPU (system calls go through gVisor and are slower than on the host). It is a Linux container, not a full VM: there is no display or UEFI, and changes outside /root are reset when it stops. Commands run from the device's console.", Tone.INFO)
                     if (!vm.engineAvailable) Notice("This APK was built without the native engine.", Tone.BAD)
                 }
                 if (d.kind == GuestKind.ANDROID_AOSP) {
