@@ -16,6 +16,8 @@ data class AppSettings(
     val disableProotSeccomp: Boolean = false,
     val keepScreenOnInDisplay: Boolean = true,
     val runtimeManifestUrl: String = "",
+    /** gVisor platform for the native engine: "systrap" (default) or "ptrace". */
+    val enginePlatform: String = "systrap",
 )
 
 /** SharedPreferences-backed settings exposed as a StateFlow. */
@@ -36,6 +38,7 @@ class SettingsStore(context: Context, private val defaultManifestUrl: String) {
             putBoolean("disable_proot_seccomp", next.disableProotSeccomp)
             putBoolean("keep_screen_on", next.keepScreenOnInDisplay)
             putString("runtime_manifest_url", next.runtimeManifestUrl)
+            putString("engine_platform", next.enginePlatform)
         }
         _state.value = next
     }
@@ -48,5 +51,6 @@ class SettingsStore(context: Context, private val defaultManifestUrl: String) {
         disableProotSeccomp = prefs.getBoolean("disable_proot_seccomp", false),
         keepScreenOnInDisplay = prefs.getBoolean("keep_screen_on", true),
         runtimeManifestUrl = prefs.getString("runtime_manifest_url", "") ?: "",
+        enginePlatform = prefs.getString("engine_platform", "systrap")?.takeIf { it == "systrap" || it == "ptrace" } ?: "systrap",
     )
 }

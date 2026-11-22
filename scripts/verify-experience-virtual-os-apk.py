@@ -7,11 +7,14 @@ Checks:
     libtalloc.so, libandroid-shmem.so), each an AArch64 ELF;
   * libproot.so is a Bionic executable (interpreter /system/bin/linker64)
     whose DT_NEEDED entries resolve to bundled or Android system libraries;
+  * the native engine (gVisor, libevos_*.so) is either absent or complete,
+    each file a static AArch64 executable; --require-engine makes it
+    mandatory;
   * no other ABI directories exist (the binaries are arm64-only);
   * no runtime payload (rootfs, kernels) is bundled: those ship separately
     as base.tar.gz on GitHub Releases.
 
-Usage: verify-experience-virtual-os-apk.py <apk> [--expect-package com.experience.virtualos]
+Usage: verify-experience-virtual-os-apk.py <apk> [--require-engine]
 """
 import argparse
 import io
@@ -21,6 +24,8 @@ import zipfile
 
 REQUIRED_LIBS = ["libproot.so", "libproot-loader.so", "libtalloc.so", "libandroid-shmem.so"]
 SYSTEM_LIBS = {"libc.so", "libm.so", "libdl.so", "liblog.so"}
+ENGINE_LIBS = ["libevos_runsc.so", "libevos_gvisor_sentry.so", "libevos_gvisor_prewarmer.so",
+               "libevos_gvisor_fdparking.so", "libevos_gvisor_procumounter.so"]
 FORBIDDEN_PREFIXES = ["assets/alpine/", "assets/kernel/", "assets/rootfs"]
 
 
@@ -60,6 +65,7 @@ def elf_info(data):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("apk")
+    ap.add_argument("--require-engine", action="store_true", help="fail unless the native engine is bundled")
     args = ap.parse_args()
     errors = []
     with zipfile.ZipFile(args.apk) as z:
@@ -96,6 +102,26 @@ def main():
                 if n not in SYSTEM_LIBS and n not in bundled:
                     errors.append(f"{lib} needs {n}, which is not bundled")
             print(f"ok  {path:36} {len(data):>8} bytes  needs {', '.join(needed) or '-'}")
+        engine = [lib for lib in ENGINE_LIBS if f"lib/arm64-v8a/{lib}" in names]
+        if engine or args.require_engine:
+            for lib in ENGINE_LIBS:
+                path = f"lib/arm64-v8a/{lib}"
+                if path not in names:
+                    errors.append(f"native engine incomplete: missing {path}")
+                    continue
+                data = z.read(path)
+                try:
+                    machine, interp, needed = elf_info(data)
+                except ValueError as e:
+                    errors.append(f"{lib}: {e}")
+                    continue
+                if machine != 183:
+                    errors.append(f"{lib}: not AArch64 (e_machine {machine})")
+                if interp is not None or needed:
+                    errors.append(f"{lib}: must be a static executable (interp {interp}, needs {needed})")
+                print(f"ok  {path:36} {len(data):>8} bytes  static engine executable")
+        else:
+            print("--  native engine not bundled")
         if "assets/runtime/base-runtime.bin" in names:
             import hashlib, json
             manifest = json.loads(z.read("assets/runtime/manifest.json"))

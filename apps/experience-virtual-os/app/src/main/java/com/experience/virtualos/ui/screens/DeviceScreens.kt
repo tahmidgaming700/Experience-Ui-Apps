@@ -25,6 +25,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -217,14 +220,26 @@ fun DeviceEditorScreen(vm: AppViewModel, deviceId: String?, onBack: () -> Unit, 
                             SegmentedButton(
                                 selected = d.kind == k,
                                 onClick = {
-                                    d = if (k == GuestKind.ANDROID_AOSP) d.copy(kind = k, memoryMb = maxOf(d.memoryMb, 2048), name = if (d.name == "Linux ARM64") "Android" else d.name,
-                                        systemImageId = images.firstOrNull { it.support != SupportLevel.UNSUPPORTED }?.id, cpuModel = CpuModel.CORTEX_A57)
-                                    else d.copy(kind = k, systemImageId = null, name = if (d.name == "Android") "Linux ARM64" else d.name)
+                                    val defaultNames = setOf("Linux ARM64", "Android", "Ubuntu container")
+                                    val name = if (d.name in defaultNames) when (k) {
+                                        GuestKind.LINUX_ARM64 -> "Linux ARM64"
+                                        GuestKind.ANDROID_AOSP -> "Android"
+                                        GuestKind.LINUX_CONTAINER -> "Ubuntu container"
+                                    } else d.name
+                                    d = when (k) {
+                                        GuestKind.ANDROID_AOSP -> d.copy(kind = k, memoryMb = maxOf(d.memoryMb, 2048), name = name,
+                                            systemImageId = images.firstOrNull { it.support != SupportLevel.UNSUPPORTED }?.id, cpuModel = CpuModel.CORTEX_A57)
+                                        else -> d.copy(kind = k, systemImageId = null, name = name)
+                                    }
                                 },
                                 shape = SegmentedButtonDefaults.itemShape(i, GuestKind.entries.size),
-                            ) { Text(if (k == GuestKind.LINUX_ARM64) "Linux ARM64" else "Android (exp.)") }
+                            ) { Text(when (k) { GuestKind.LINUX_ARM64 -> "Linux VM"; GuestKind.ANDROID_AOSP -> "Android (exp.)"; GuestKind.LINUX_CONTAINER -> "Native (exp.)" }) }
                         }
                     }
+                }
+                if (d.kind == GuestKind.LINUX_CONTAINER) {
+                    Notice("Native engine (experimental): runs the runtime's Ubuntu userspace directly on this phone's CPU under gVisor — no CPU emulation, so it starts in seconds and runs at near-native speed. It is a Linux container, not a full VM: there is no display or UEFI, and changes outside /root are reset when it stops. Commands run from the device's console.", Tone.INFO)
+                    if (!vm.engineAvailable) Notice("This APK was built without the native engine.", Tone.BAD)
                 }
                 if (d.kind == GuestKind.ANDROID_AOSP) {
                     Notice("Experimental. Android images start their kernel and system services but cannot display a screen on this runtime (no goldfish pipe / host GPU). Progress is visible in the serial console only.", Tone.WARN)
@@ -234,7 +249,7 @@ fun DeviceEditorScreen(vm: AppViewModel, deviceId: String?, onBack: () -> Unit, 
                     }
                 }
             }
-            SectionCard(eyebrow = "Hardware") {
+            if (d.kind != GuestKind.LINUX_CONTAINER) SectionCard(eyebrow = "Hardware") {
                 LabeledSlider("Memory", "${d.memoryMb} MB", d.memoryMb.toFloat(), 512f..maxOf(1024, maxMem).toFloat(), steps = (maxOf(1024, maxMem) - 512) / 256 - 1) {
                     d = d.copy(memoryMb = (it / 256).toInt() * 256)
                 }
@@ -252,7 +267,7 @@ fun DeviceEditorScreen(vm: AppViewModel, deviceId: String?, onBack: () -> Unit, 
                     Notice("More memory than is currently free on this phone (${FileUtils.formatBytes(host.availableMemoryBytes)}). Starting may fail or other apps may be closed.", Tone.WARN)
                 }
             }
-            SectionCard(eyebrow = "Display and network") {
+            if (d.kind != GuestKind.LINUX_CONTAINER) SectionCard(eyebrow = "Display and network") {
                 Text("Resolution", style = MaterialTheme.typography.titleSmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(1024 to 768, 1280 to 720, 1280 to 800, 720 to 1280, 1920 to 1080).forEach { (w, h) ->
@@ -334,13 +349,13 @@ fun DeviceDetailScreen(vm: AppViewModel, deviceId: String, onBack: () -> Unit, o
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     StatusPill(phaseLabel(s), phaseTone(s))
                     Spacer(Modifier.weight(1f))
-                    Text("${device.cpuCores} vCPU · ${device.memoryMb} MB · ${device.diskSizeGb} GB", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (device.kind == GuestKind.LINUX_CONTAINER) "Native engine · gVisor" else "${device.cpuCores} vCPU · ${device.memoryMb} MB · ${device.diskSizeGb} GB", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (s.message.isNotBlank()) Text(s.message, style = MaterialTheme.typography.bodyMedium, maxLines = 6)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     when (s.phase) {
                         VmPhase.RUNNING -> {
-                            Button(onClick = { context.startActivity(GuestDisplayActivity.intent(context, s.vncPort, device.name, settings.keepScreenOnInDisplay)) }) {
+                            if (device.kind != GuestKind.LINUX_CONTAINER) Button(onClick = { context.startActivity(GuestDisplayActivity.intent(context, s.vncPort, device.name, settings.keepScreenOnInDisplay)) }) {
                                 Icon(Icons.Outlined.Tv, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Display")
                             }
                             FilledTonalButton(onClick = { vm.stopDevice(deviceId) }) { Icon(Icons.Outlined.Stop, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Shut down") }
@@ -362,11 +377,26 @@ fun DeviceDetailScreen(vm: AppViewModel, deviceId: String, onBack: () -> Unit, o
                             Text("Attach installer ISO")
                         }
                     }
+                } else if (device.kind == GuestKind.LINUX_CONTAINER) {
+                    var command by rememberSaveable { mutableStateOf("") }
+                    val run = { if (command.isNotBlank()) { vm.execInContainer(deviceId, command.trim()); command = "" } }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            command, { command = it }, singleLine = true, enabled = s.phase == VmPhase.RUNNING,
+                            label = { Text(if (s.phase == VmPhase.RUNNING) "Command (runs as root)" else "Start the container to run commands") },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(onSend = { run() }),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        FilledTonalButton(onClick = run, enabled = s.phase == VmPhase.RUNNING && command.isNotBlank()) { Text("Run") }
+                    }
+                    Text("Examples: apt-get update · uname -a · ls /root", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     Notice("Android guests have no display on this runtime. Watch the Serial tab to follow the boot.", Tone.WARN)
                 }
             }
-            ConsoleTabs(vm, deviceId, s.phase == VmPhase.RUNNING, Modifier.weight(1f))
+            ConsoleTabs(vm, deviceId, s.phase == VmPhase.RUNNING, Modifier.weight(1f), container = device.kind == GuestKind.LINUX_CONTAINER)
         }
     }
 
@@ -383,9 +413,11 @@ fun DeviceDetailScreen(vm: AppViewModel, deviceId: String, onBack: () -> Unit, o
 }
 
 @Composable
-private fun ConsoleTabs(vm: AppViewModel, deviceId: String, live: Boolean, modifier: Modifier) {
+private fun ConsoleTabs(vm: AppViewModel, deviceId: String, live: Boolean, modifier: Modifier, container: Boolean = false) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val (serial, qemu, launch) = vm.deviceFiles(deviceId)
+    val (serialLog, qemu, launch) = vm.deviceFiles(deviceId)
+    // Containers have no serial port: the first tab is the command console.
+    val serial = if (container) vm.consoleLog(deviceId) else serialLog
     var text by remember { mutableStateOf("") }
     val context = LocalContext.current
     LaunchedEffect(tab, live) {
@@ -397,7 +429,7 @@ private fun ConsoleTabs(vm: AppViewModel, deviceId: String, live: Boolean, modif
     }
     Card(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest)) {
         PrimaryTabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.surfaceContainerHighest) {
-            listOf("Serial console", "QEMU log", "Command").forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
+            (if (container) listOf("Console") else listOf("Serial console", "QEMU log", "Command")).forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
         }
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (live) "Live · refreshes every 1.5 s" else "Last run", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))

@@ -69,6 +69,14 @@ class AppGraph(private val app: App) {
         disableSeccomp = settings.state.value.disableProotSeccomp,
     )
 
+    /** Experimental gVisor-based native engine (see core/engine/NativeEngine). */
+    fun nativeEngine() = com.experience.virtualos.core.engine.NativeEngine(
+        nativeLibraryDir = File(app.applicationInfo.nativeLibraryDir ?: File(app.filesDir, "missing-native-libs").path),
+        engineDir = File(dataDir, "engine"),
+        tmpDir = File(app.cacheDir, "engine"),
+        platform = { settings.state.value.enginePlatform },
+    )
+
     val runtimeInstaller = RuntimeInstaller(
         layout = runtimeLayout,
         downloader = downloader,
@@ -92,6 +100,7 @@ class AppGraph(private val app: App) {
         host = ::hostInfo,
         log = activityLog,
         tcgThreads = { settings.state.value.tcgThreads },
+        engine = ::nativeEngine,
         onRunningChanged = { running ->
             val intent = Intent(app, VmService::class.java)
             if (running) ContextCompat.startForegroundService(app, intent) else app.stopService(intent)

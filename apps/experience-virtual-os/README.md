@@ -2,7 +2,9 @@
 
 A rootless virtual-machine manager for ARM64 Android phones (Android 9+). It runs
 QEMU inside a private Ubuntu 26.04 LTS (ARM64) userspace under PRoot — no root, no bootloader
-unlock, no system modification.
+unlock, no system modification. Since 0.8.0 it also includes an experimental **native engine**
+(AndVM-style): a patched gVisor user-space kernel that runs the Ubuntu userspace directly on the
+phone's CPU, without emulation ([`docs/experience-virtual-os-native-engine.md`](../../docs/experience-virtual-os-native-engine.md)).
 
 **What works today, honestly stated** (details and evidence in
 [`docs/experience-virtual-os-guest-compatibility.md`](../../docs/experience-virtual-os-guest-compatibility.md)):
@@ -13,6 +15,7 @@ unlock, no system modification.
 | Virtual-device database (create, edit, duplicate, delete, import/export) | Implemented, unit-tested |
 | Linux ARM64 guests (UEFI ISO, virtio disk/GPU/net, touch + keyboard over local VNC) | Experimental — QEMU configuration verified booting Alpine 3.24 to a login prompt; not yet run on a phone |
 | Android system images (Google AOSP ARM64) | Experimental, **console only** — kernel, init and native services start; no display is possible without the Android Emulator's goldfish pipe |
+| Native engine: Linux containers on the host CPU (gVisor, "Native (exp.)" devices) | Experimental — runs on an Android 11 arm64 kernel without root or user namespaces; not yet run on a phone |
 | Google Play / Android app compatibility | Not provided |
 
 ## Architecture
@@ -28,6 +31,8 @@ APK (Kotlin, Compose Material 3)                      GitHub Release (separate)
 │                lib/arm64-v8a/libproot.so (Bionic)   App-private storage (files/)
 ├─ core/vm       device DB, QEMU argv builder,        ├─ runtime/current.json + versions/<v>/rootfs
 │                VmController, foreground service     ├─ devices/devices.json + <id>/ (disks, logs)
+├─ core/engine   native engine: OCI bundle + runsc    ├─ engine/ (gVisor state, logs, sidecar links)
+│                (lib/arm64-v8a/libevos_*.so)
 ├─ core/images   Google sys-img catalogue + install   ├─ images/<id>/ (Android system images)
 └─ GuestDisplayActivity + RfbClient (127.0.0.1 VNC)   └─ logs/activity.json
 ```
@@ -37,6 +42,9 @@ Host-side and guest-side binaries are kept strictly apart:
 * **Android/Bionic (in the APK):** `libproot.so`, `libproot-loader.so`, `libtalloc.so`,
   `libandroid-shmem.so` — Termux's PRoot build, fetched and SHA-256 pinned by
   `scripts/fetch-termux-proot.sh`, with `NEEDED`/`RUNPATH` rewritten for `nativeLibraryDir`.
+* **Static arm64 (in the APK):** the native engine, `libevos_runsc.so` and
+  `libevos_gvisor_*.so` — gVisor built by `scripts/build-experience-gvisor-engine.sh` with
+  `patches/gvisor`. Pure Go plus freestanding C, so they need neither Bionic nor glibc.
 * **Linux/glibc (in the runtime archive):** everything QEMU needs. These binaries only run
   inside the Ubuntu root under PRoot; they are never executed directly on Bionic.
 
@@ -74,6 +82,10 @@ Requirements: JDK 17, Android SDK platform 36 + build-tools 36.0.0, Linux host w
 # Native PRoot libraries (not committed; written to app/src/main/jniLibs/)
 bash scripts/fetch-termux-proot.sh apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a
 
+# Optional: native engine (gVisor, static arm64; needs go, clang, lld; qemu-aarch64 on x86_64)
+bash scripts/build-experience-gvisor-engine.sh engine-dist
+cp engine-dist/libevos_*.so apps/experience-virtual-os/app/src/main/jniLibs/arm64-v8a/
+
 cd apps/experience-virtual-os
 ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease
 python3 ../../scripts/verify-experience-virtual-os-apk.py app/build/outputs/apk/debug/app-debug.apk
@@ -102,6 +114,10 @@ extract the real archive with the app's extractor.
 * `DeviceAndQemuTest` — persistence, duplicate/import/export, validation, QEMU argv for Linux,
   KVM and Android profiles, Google catalogue parsing, GPT partition detection.
 * `UiSmokeTest` (Robolectric, API 28) — walks the setup wizard and main tabs.
+* `NativeEngineTest` — OCI bundle generation and missing-engine reporting.
+* On a device or emulator (debug APK with the engine), `am instrument -w -e rootfs <dir>
+  com.experience.virtualos/.debug.EngineProbe` runs the engine inside the app process:
+  self-test, detached start, `exec`, persistence of `/root`, stop.
 
 ## CI and releases
 

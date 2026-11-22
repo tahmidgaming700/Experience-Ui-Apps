@@ -82,6 +82,12 @@ fun SettingsScreen(vm: AppViewModel, padding: PaddingValues, restartSetup: () ->
                     }
                 }
                 Text("One thread uses less power and heat; multi-threaded TCG lets several guest CPUs run in parallel.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Native engine platform", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("systrap" to "systrap (faster)", "ptrace" to "ptrace (compatibility)").forEach { (v, label) ->
+                        FilterChip(selected = settings.enginePlatform == v, onClick = { vm.updateSettings { it.copy(enginePlatform = v) } }, label = { Text(label) })
+                    }
+                }
                 ToggleRow("PRoot compatibility mode", "Disables PRoot's seccomp acceleration (PROOT_NO_SECCOMP). Try this if the runtime self-test fails on your kernel.", settings.disableProotSeccomp) {
                     v -> vm.updateSettings { it.copy(disableProotSeccomp = v) }
                 }

@@ -49,6 +49,7 @@ object QemuCommandBuilder {
     ): List<String> = when (device.kind) {
         GuestKind.LINUX_ARM64 -> linux(device, paths, ports, useKvm, tcgThreads)
         GuestKind.ANDROID_AOSP -> android(device, paths, ports, useKvm, tcgThreads, requireNotNull(androidLayout) { "Android image layout required" })
+        GuestKind.LINUX_CONTAINER -> throw IllegalArgumentException("Native containers do not use QEMU")
     }
 
     private fun common(device: VirtualDevice, ports: Ports, useKvm: Boolean, tcgThreads: Int, gic3: Boolean): MutableList<String> {

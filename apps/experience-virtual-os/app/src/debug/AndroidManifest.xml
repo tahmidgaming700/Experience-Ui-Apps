@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: lets `am instrument` exercise the native engine inside
+     the real app process (zygote-forked, app uid and seccomp filter). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <instrumentation
+        android:name="com.experience.virtualos.debug.EngineProbe"
+        android:targetPackage="com.experience.virtualos"
+        android:label="Native engine probe" />
+</manifest>

@@ -13,8 +13,8 @@ android {
         applicationId 'com.experience.virtualos'
         minSdk 28
         targetSdk 35
-        versionCode 8
-        versionName '0.7.1'
+        versionCode 9
+        versionName '0.8.0'
         // Only ARM64 hosts are supported: the bundled PRoot and the runtime
         // archive are arm64-v8a builds.
         ndk { abiFilters 'arm64-v8a' }
@@ -92,6 +92,7 @@ android {
             systemProperty 'sun.jnu.encoding', 'UTF-8'
             systemProperty 'file.encoding', 'UTF-8'
             if (System.getenv('EVOS_RUNTIME_ARCHIVE')) environment 'EVOS_RUNTIME_ARCHIVE', System.getenv('EVOS_RUNTIME_ARCHIVE')
+            ['EVOS_ENGINE_BUNDLE_OUT', 'EVOS_ENGINE_ROOTFS'].each { if (System.getenv(it)) environment it, System.getenv(it) }
         }
     }
 

@@ -191,6 +191,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }.also { g.activityLog.add(if (it.startsWith("PASSED")) com.experience.virtualos.core.log.LogLevel.SUCCESS else com.experience.virtualos.core.log.LogLevel.ERROR, "Runtime", "Self-test: ${it.take(300)}") }
     }
 
+    // ---- Native engine (experimental) -----------------------------------
+    val engineAvailable: Boolean get() = g.nativeEngine().available
+
+    /** Runs the native-engine self-test against the installed runtime; result shown like the runtime self-test. */
+    fun runEngineSelfTest() = viewModelScope.launch(Dispatchers.IO) {
+        _selfTest.value = "Running the native engine…"
+        _selfTest.value = try {
+            val dir = g.runtimeInstaller.currentDirectory() ?: error("Install the runtime first.")
+            val started = System.currentTimeMillis()
+            val out = g.nativeEngine().selfTest(File(dir, "rootfs"), File(getApplication<Application>().cacheDir, "engine-selftest"))
+            "PASSED in ${System.currentTimeMillis() - started} ms\n\n$out"
+        } catch (e: Exception) {
+            "FAILED\n\n${e.message ?: e}\n\nEngine logs: ${g.nativeEngine().logDir}"
+        }.also { g.activityLog.add(if (it.startsWith("PASSED")) com.experience.virtualos.core.log.LogLevel.SUCCESS else com.experience.virtualos.core.log.LogLevel.ERROR, "Engine", "Native engine self-test: ${it.take(300)}") }
+    }
+
+    /** Runs a shell command in a running native container; output lands in its console log. */
+    fun execInContainer(id: String, command: String) = viewModelScope.launch(Dispatchers.IO) {
+        try { g.vmController.execInContainer(id, command) } catch (e: Exception) { say(e.message ?: "Command failed") }
+    }
+
+    fun consoleLog(id: String) = g.vmController.consoleLog(id)
+
     fun cancelRuntimeInstall() = work.cancelUniqueWork(WorkKeys.RUNTIME_WORK)
 
     /** Copies a user-picked archive + manifest into private storage and installs them. */

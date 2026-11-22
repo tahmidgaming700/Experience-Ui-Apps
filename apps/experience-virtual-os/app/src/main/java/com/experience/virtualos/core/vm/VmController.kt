@@ -43,15 +43,24 @@ class VmController(
     private val log: ActivityLog,
     private val tcgThreads: () -> Int,
     private val onRunningChanged: (Boolean) -> Unit,
+    private val engine: () -> com.experience.virtualos.core.engine.NativeEngine,
 ) {
     private val _status = MutableStateFlow<Map<String, VmStatus>>(emptyMap())
     val status: StateFlow<Map<String, VmStatus>> = _status.asStateFlow()
 
-    private data class Session(val deviceId: String, val process: Process, val ports: QemuCommandBuilder.Ports)
+    /** A running device: a QEMU process, or a native-engine container ([containerId]). */
+    private data class Session(
+        val deviceId: String,
+        val process: Process?,
+        val ports: QemuCommandBuilder.Ports,
+        val containerId: String? = null,
+    ) {
+        val alive: Boolean get() = process?.isAlive ?: true
+    }
     @Volatile private var session: Session? = null
 
     fun statusOf(id: String): VmStatus = _status.value[id] ?: VmStatus(VmPhase.STOPPED)
-    val runningDeviceId: String? get() = session?.takeIf { it.process.isAlive }?.deviceId
+    val runningDeviceId: String? get() = session?.takeIf { it.alive }?.deviceId
 
     fun qemuLog(id: String) = File(devices.directory(id), "qemu.log")
     fun serialLog(id: String) = File(devices.directory(id), "serial.log")
@@ -60,13 +69,17 @@ class VmController(
     /** Blocking; call from a background thread. */
     fun start(id: String) {
         val device = devices.get(id) ?: throw IOException("Device not found.")
-        session?.let { if (it.process.isAlive) throw IOException("Another virtual device is already running. Stop it first.") }
+        session?.let { if (it.alive) throw IOException("Another virtual device is already running. Stop it first.") }
         set(id, VmStatus(VmPhase.PREPARING, "Checking runtime…"))
         try {
             val installed = runtime.current() ?: throw IOException("Install the runtime before starting a device.")
             val runtimeDir = runtime.currentDirectory() ?: throw IOException("The runtime directory is missing. Repair the runtime.")
             val problems = runtime.verify()
             if (problems.isNotEmpty()) throw IOException("Runtime check failed: ${problems.joinToString()}")
+            if (device.kind == GuestKind.LINUX_CONTAINER) {
+                startContainer(device, File(runtimeDir, "rootfs"))
+                return
+            }
             val proot = launcher()
             proot.check().takeIf { it.isNotEmpty() }?.let { throw IOException(it.joinToString(" ")) }
             val rootfs = File(runtimeDir, "rootfs")
@@ -108,6 +121,7 @@ class VmController(
                         serialLog = guest(serialLog(id)),
                     )
                 }
+                GuestKind.LINUX_CONTAINER -> error("handled above")
                 GuestKind.ANDROID_AOSP -> {
                     val imageId = device.systemImageId ?: throw IOException("No Android system image selected.")
                     val image = images.installedImage(imageId) ?: throw IOException("The selected Android image is not installed.")
@@ -177,6 +191,60 @@ class VmController(
         return proot.start(rootfs, argv, qemuLog(id))
     }
 
+    fun consoleLog(id: String) = File(devices.directory(id), "console.log")
+
+    private fun containerId(id: String) = "evos-" + id.take(18)
+
+    private fun startContainer(device: VirtualDevice, rootfs: File) {
+        val id = device.id
+        val engine = engine()
+        engine.check().takeIf { it.isNotEmpty() }?.let { throw IOException(it.joinToString(" ")) }
+        set(id, VmStatus(VmPhase.PREPARING, "Starting the native engine…"))
+        val dir = devices.directory(id).apply { mkdirs() }
+        val bundle = File(dir, "bundle")
+        // PID 1 keeps the container alive; commands run beside it with exec.
+        engine.writeBundle(bundle, rootfs, File(dir, "home"), sanitizeHostname(device.name),
+            listOf("/bin/sh", "-c", "echo container-ready; while :; do sleep 3600; done"))
+        val cid = containerId(id)
+        val started = System.currentTimeMillis()
+        rotate(consoleLog(id))
+        engine.start(cid, bundle)
+        val ms = System.currentTimeMillis() - started
+        consoleLog(id).appendText("# ${device.name}: native engine (gVisor) container started in $ms ms.\n" +
+            "# Files outside /root are reset when the container stops.\n")
+        session = Session(id, null, QemuCommandBuilder.Ports(0, 0), cid)
+        devices.markStarted(id)
+        set(id, VmStatus(VmPhase.RUNNING, "Container running natively (gVisor) — started in $ms ms. Use the console to run commands.", 0, "native", System.currentTimeMillis()))
+        log.success("Device", "Started ${device.name} with the native engine in $ms ms")
+        onRunningChanged(true)
+        Thread({ watchContainer(id, device.name, cid) }, "evos-container-watch").start()
+    }
+
+    private fun watchContainer(id: String, name: String, cid: String) {
+        val engine = engine()
+        while (true) {
+            try { Thread.sleep(3000) } catch (_: InterruptedException) { return }
+            if (session?.containerId != cid) return
+            if (!engine.isRunning(cid)) break
+        }
+        val wasStopping = statusOf(id).phase == VmPhase.STOPPING
+        if (session?.containerId == cid) session = null
+        set(id, VmStatus(if (wasStopping) VmPhase.STOPPED else VmPhase.FAILED, if (wasStopping) "Stopped" else "The container exited unexpectedly. See the console and engine logs."))
+        if (wasStopping) log.info("Device", "$name stopped") else log.error("Device", "$name: container exited unexpectedly")
+        onRunningChanged(false)
+    }
+
+    /** Runs [command] in the running container of device [id]; appends to its console log. */
+    fun execInContainer(id: String, command: String): Pair<Int, String> {
+        val s = session?.takeIf { it.deviceId == id && it.containerId != null } ?: throw IOException("This container is not running.")
+        val (code, out) = engine().exec(s.containerId!!, command)
+        consoleLog(id).appendText("$ $command\n$out${if (out.endsWith("\n") || out.isEmpty()) "" else "\n"}${if (code != 0) "[exit $code]\n" else ""}")
+        return code to out
+    }
+
+    private fun sanitizeHostname(name: String) =
+        name.lowercase().replace(Regex("[^a-z0-9-]"), "-").trim('-').take(40).ifBlank { "evos" }
+
     private fun watch(id: String, name: String, process: Process) {
         val code = try { process.waitFor() } catch (_: InterruptedException) { return }
         val wasStopping = statusOf(id).phase == VmPhase.STOPPING
@@ -196,18 +264,23 @@ class VmController(
     fun stop(id: String, force: Boolean = false) {
         val s = session?.takeIf { it.deviceId == id } ?: run { set(id, VmStatus(VmPhase.STOPPED)); return }
         set(id, statusOf(id).copy(phase = VmPhase.STOPPING, message = "Stopping…"))
+        if (s.containerId != null) {
+            engine().stop(s.containerId)
+            return // watchContainer() records the final state.
+        }
+        val process = s.process ?: return
         if (!force) {
             try {
                 QmpClient(s.ports.qmpPort).connect().use { it.execute("system_powerdown") }
-                if (s.process.waitForExit(20_000)) return
+                if (process.waitForExit(20_000)) return
                 QmpClient(s.ports.qmpPort).connect().use { it.execute("quit") }
-                if (s.process.waitForExit(5_000)) return
+                if (process.waitForExit(5_000)) return
             } catch (_: Exception) {
                 // Fall through to termination.
             }
         }
-        s.process.destroy()
-        if (!s.process.waitForExit(3_000)) s.process.destroyForcibly()
+        process.destroy()
+        if (!process.waitForExit(3_000)) process.destroyForcibly()
     }
 
     fun stopAll() {

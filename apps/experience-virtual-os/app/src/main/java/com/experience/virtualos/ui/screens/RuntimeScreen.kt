@@ -146,6 +146,19 @@ fun RuntimeScreen(vm: AppViewModel, padding: PaddingValues) {
         }
 
         item {
+            SectionCard(eyebrow = "Native engine (experimental)") {
+                Text("gVisor", style = MaterialTheme.typography.titleLarge)
+                Text("Runs the runtime's Ubuntu userspace directly on this phone's CPU (no emulation) — the same approach AndVM uses, built from open-source gVisor with Android patches. Used by \"Linux container\" devices.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (vm.engineAvailable) {
+                    StatusPill("Included in this app", Tone.GOOD)
+                    OutlinedButton(onClick = vm::runEngineSelfTest, enabled = runtime.installed != null) { Text("Test native engine") }
+                } else {
+                    Notice("This APK was built without the native engine.", Tone.WARN)
+                }
+            }
+        }
+
+        item {
             SectionCard(eyebrow = "Offline install") {
                 Text("Install a runtime you downloaded yourself (for example a CI artifact). Pick base.tar.gz, then its manifest.json. Size and SHA-256 are verified exactly as for a download.", style = MaterialTheme.typography.bodyMedium)
                 FilledTonalButton(onClick = { pickArchive.launch(arrayOf("*/*")) }, enabled = t?.running != true, modifier = Modifier.fillMaxWidth()) { Text("Choose files") }

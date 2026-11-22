@@ -10,6 +10,12 @@ enum class GuestKind(val label: String) {
 
     /** Google AOSP emulator system image on QEMU's virt machine. Experimental, console only. */
     ANDROID_AOSP("Android system image (experimental)"),
+
+    /**
+     * The runtime's Ubuntu userspace run natively on the host CPU under the
+     * gVisor native engine (no CPU emulation). Experimental.
+     */
+    LINUX_CONTAINER("Linux container (native engine, experimental)"),
 }
 
 @Serializable

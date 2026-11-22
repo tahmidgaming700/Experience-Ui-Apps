@@ -1,0 +1,828 @@
+diff --git a/pkg/hostcompat/hostcompat.go b/pkg/hostcompat/hostcompat.go
+new file mode 100644
+index 0000000..6ecacac
+--- /dev/null
++++ b/pkg/hostcompat/hostcompat.go
+@@ -0,0 +1,158 @@
++// Copyright 2026 The Experience Virtual OS Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++// Package hostcompat provides fallbacks for host system calls that are
++// missing on older kernels, such as the Linux 4.9 kernel of Android 9 devices
++// (statx: 4.11, pidfd_open: 5.3, openat2: 5.6). Each helper first tries the
++// modern call and falls back only on ENOSYS, preserving its semantics.
++package hostcompat
++
++import (
++	"fmt"
++	"os"
++	"path"
++	"strings"
++	"sync/atomic"
++
++	"golang.org/x/sys/unix"
++)
++
++var (
++	noStatx   atomic.Bool
++	noOpenat2 atomic.Bool
++	noPidfd   atomic.Bool
++)
++
++// Statx behaves like unix.Statx. On kernels without statx(2) it uses
++// fstatat(2); STATX_BTIME is then not reported (as on filesystems without
++// birth times).
++func Statx(dirfd int, p string, flags int, mask int, stat *unix.Statx_t) error {
++	if !noStatx.Load() {
++		err := unix.Statx(dirfd, p, flags, mask, stat)
++		if err != unix.ENOSYS {
++			return err
++		}
++		noStatx.Store(true)
++	}
++	var st unix.Stat_t
++	if err := unix.Fstatat(dirfd, p, &st, flags&(unix.AT_EMPTY_PATH|unix.AT_SYMLINK_NOFOLLOW|unix.AT_NO_AUTOMOUNT)); err != nil {
++		return err
++	}
++	*stat = unix.Statx_t{
++		Mask:       unix.STATX_BASIC_STATS,
++		Blksize:    uint32(st.Blksize),
++		Nlink:      uint32(st.Nlink),
++		Uid:        st.Uid,
++		Gid:        st.Gid,
++		Mode:       uint16(st.Mode),
++		Ino:        st.Ino,
++		Size:       uint64(st.Size),
++		Blocks:     uint64(st.Blocks),
++		Atime:      unix.StatxTimestamp{Sec: int64(st.Atim.Sec), Nsec: uint32(st.Atim.Nsec)},
++		Ctime:      unix.StatxTimestamp{Sec: int64(st.Ctim.Sec), Nsec: uint32(st.Ctim.Nsec)},
++		Mtime:      unix.StatxTimestamp{Sec: int64(st.Mtim.Sec), Nsec: uint32(st.Mtim.Nsec)},
++		Rdev_major: unix.Major(uint64(st.Rdev)),
++		Rdev_minor: unix.Minor(uint64(st.Rdev)),
++		Dev_major:  unix.Major(uint64(st.Dev)),
++		Dev_minor:  unix.Minor(uint64(st.Dev)),
++	}
++	return nil
++}
++
++// OpenatSingle opens name (a single path component) relative to dirfd without
++// following a symlink. It is equivalent to openat2 with RESOLVE_BENEATH |
++// RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS for such names, and is used on
++// kernels without openat2(2).
++func OpenatSingle(dirfd int, name string, flags int, mode uint32) (int, error) {
++	if name == "" || name == "." || name == ".." || strings.Contains(name, "/") {
++		return -1, fmt.Errorf("hostcompat: %q is not a single path component", name)
++	}
++	return unix.Openat(dirfd, name, flags|unix.O_NOFOLLOW, mode)
++}
++
++// Openat2Single tries openat2(2) and falls back to OpenatSingle on ENOSYS.
++func Openat2Single(dirfd int, name string, how *unix.OpenHow) (int, error) {
++	if !noOpenat2.Load() {
++		fd, err := unix.Openat2(dirfd, name, how)
++		if err != unix.ENOSYS {
++			return fd, err
++		}
++		noOpenat2.Store(true)
++	}
++	return OpenatSingle(dirfd, name, int(how.Flags), uint32(how.Mode))
++}
++
++// OpenPathNoSymlinks opens the absolute path p with O_PATH, refusing symlinks
++// in any component (openat2 RESOLVE_NO_SYMLINKS). It walks one component at a
++// time with O_NOFOLLOW on kernels without openat2(2).
++func OpenPathNoSymlinks(p string, flags int) (int, error) {
++	if !noOpenat2.Load() {
++		fd, err := unix.Openat2(unix.AT_FDCWD, p, &unix.OpenHow{Flags: uint64(flags), Resolve: unix.RESOLVE_NO_SYMLINKS})
++		if err != unix.ENOSYS {
++			return fd, err
++		}
++		noOpenat2.Store(true)
++	}
++	if !path.IsAbs(p) {
++		return -1, unix.EINVAL
++	}
++	fd, err := unix.Open("/", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return -1, err
++	}
++	for _, c := range strings.Split(path.Clean(p), "/") {
++		if c == "" {
++			continue
++		}
++		next, err := unix.Openat(fd, c, unix.O_PATH|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++		unix.Close(fd)
++		if err != nil {
++			return -1, err
++		}
++		var st unix.Stat_t
++		if err := unix.Fstat(next, &st); err != nil {
++			unix.Close(next)
++			return -1, err
++		}
++		if st.Mode&unix.S_IFMT == unix.S_IFLNK {
++			unix.Close(next)
++			return -1, unix.ELOOP
++		}
++		fd = next
++	}
++	return fd, nil
++}
++
++// PidfdSupported reports whether pidfd_open(2) is known to work. It is
++// optimistic until a call returns ENOSYS.
++func PidfdSupported() bool { return !noPidfd.Load() }
++
++// MarkNoPidfd records that pidfd_open(2) returned ENOSYS.
++func MarkNoPidfd() { noPidfd.Store(true) }
++
++// ProcessRunning reports whether pid exists and is not a zombie, using
++// /proc (for kernels without pidfds).
++func ProcessRunning(pid int) bool {
++	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
++	if err != nil {
++		return false
++	}
++	// Format: pid (comm) state ...; comm may contain spaces and parentheses.
++	s := string(b)
++	i := strings.LastIndexByte(s, ')')
++	if i < 0 || i+2 >= len(s) {
++		return false
++	}
++	return s[i+2] != 'Z' && s[i+2] != 'X'
++}
+diff --git a/pkg/sentry/fsimpl/gofer/directfs_inode.go b/pkg/sentry/fsimpl/gofer/directfs_inode.go
+index bea74a7..1e312ab 100644
+--- a/pkg/sentry/fsimpl/gofer/directfs_inode.go
++++ b/pkg/sentry/fsimpl/gofer/directfs_inode.go
+@@ -17,6 +17,7 @@ package gofer
+ import (
+ 	"bytes"
+ 	"fmt"
++	"gvisor.dev/gvisor/pkg/hostcompat"
+ 	"math"
+ 	"path"
+ 	"path/filepath"
+@@ -139,7 +140,7 @@ type directfsInode struct {
+ // newDirectfsDentry takes ownership of controlFD
+ func (fs *filesystem) newDirectfsDentry(controlFD int) (*dentry, error) {
+ 	var stat unix.Statx_t
+-	if err := unix.Statx(controlFD, "", unix.AT_EMPTY_PATH, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat); err != nil {
++	if err := hostcompat.Statx(controlFD, "", unix.AT_EMPTY_PATH, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat); err != nil {
+ 		log.Warningf("failed to stat FD %d: %v", controlFD, err)
+ 		_ = unix.Close(controlFD)
+ 		return nil, err
+@@ -350,7 +351,7 @@ func (i *directfsInode) updateMetadataLocked(h handle) error {
+ 	}
+ 
+ 	var stat unix.Statx_t
+-	err := unix.Statx(int(h.fd), "", unix.AT_EMPTY_PATH, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat)
++	err := hostcompat.Statx(int(h.fd), "", unix.AT_EMPTY_PATH, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat)
+ 	if handleMuRLocked {
+ 		// handleMu must be released before updateMetadataFromStatxLocked().
+ 		i.handleMu.RUnlock() // +checklocksforce: complex case.
+@@ -857,7 +858,7 @@ func (i *directfsInode) restoreFile(ctx context.Context, controlFD int, opts *vf
+ 		return fmt.Errorf("directfsInode.restoreFile called with invalid controlFD")
+ 	}
+ 	var stat unix.Statx_t
+-	if err := unix.Statx(controlFD, "", unix.AT_EMPTY_PATH, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat); err != nil {
++	if err := hostcompat.Statx(controlFD, "", unix.AT_EMPTY_PATH, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat); err != nil {
+ 		_ = unix.Close(controlFD)
+ 		return fmt.Errorf("failed to stat %q in mount %q: %w", genericDebugPathname(i.fs, d), i.fs.iopts.UniqueID, err)
+ 	}
+@@ -915,7 +916,7 @@ func doRevalidationDirectfs(ctx context.Context, vfsObj *vfs.VirtualFilesystem,
+ 		var stat unix.Statx_t
+ 		// Lock metadata *before* getting attributes for d.
+ 		d.inode.metadataMu.Lock()
+-		err := unix.Statx(parent.controlFD, d.name, unix.AT_SYMLINK_NOFOLLOW|unix.AT_NO_AUTOMOUNT, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat)
++		err := hostcompat.Statx(parent.controlFD, d.name, unix.AT_SYMLINK_NOFOLLOW|unix.AT_NO_AUTOMOUNT, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat)
+ 		if err != nil && err != unix.ENOENT {
+ 			d.inode.metadataMu.Unlock()
+ 			return err
+diff --git a/pkg/sentry/fsimpl/gofer/gofer.go b/pkg/sentry/fsimpl/gofer/gofer.go
+index 8d2cdec..06f0f60 100644
+--- a/pkg/sentry/fsimpl/gofer/gofer.go
++++ b/pkg/sentry/fsimpl/gofer/gofer.go
+@@ -44,6 +44,7 @@ package gofer
+ 
+ import (
+ 	"fmt"
++	"gvisor.dev/gvisor/pkg/hostcompat"
+ 	"path"
+ 	"strconv"
+ 	"strings"
+@@ -1451,7 +1452,7 @@ func (d *dentry) refreshSizeLocked(ctx context.Context) error {
+ 	// Using statx(2) with a minimal mask is faster than fstat(2).
+ 	var stat unix.Statx_t
+ 	// Can use RacyLoad() because handleMu is locked.
+-	err := unix.Statx(int(d.inode.writeFD.RacyLoad()), "", unix.AT_EMPTY_PATH, unix.STATX_SIZE, &stat)
++	err := hostcompat.Statx(int(d.inode.writeFD.RacyLoad()), "", unix.AT_EMPTY_PATH, unix.STATX_SIZE, &stat)
+ 	d.inode.handleMu.RUnlock() // must be released before updateSizeLocked()
+ 	if err != nil {
+ 		return err
+diff --git a/pkg/sentry/fsimpl/host/host.go b/pkg/sentry/fsimpl/host/host.go
+index 83ee4cf..81cc9e5 100644
+--- a/pkg/sentry/fsimpl/host/host.go
++++ b/pkg/sentry/fsimpl/host/host.go
+@@ -18,6 +18,7 @@ package host
+ 
+ import (
+ 	"fmt"
++	"gvisor.dev/gvisor/pkg/hostcompat"
+ 	"math"
+ 
+ 	"golang.org/x/sys/unix"
+@@ -500,7 +501,7 @@ func (i *inode) Stat(ctx context.Context, vfsfs *vfs.Filesystem, opts vfs.StatOp
+ 	// Limit our host call only to known flags.
+ 	mask := opts.Mask & linux.STATX_ALL
+ 	var s unix.Statx_t
+-	err := unix.Statx(i.hostFD, "", int(unix.AT_EMPTY_PATH|opts.Sync), int(mask), &s)
++	err := hostcompat.Statx(i.hostFD, "", int(unix.AT_EMPTY_PATH|opts.Sync), int(mask), &s)
+ 	if linuxerr.Equals(linuxerr.ENOSYS, err) {
+ 		// Fallback to fstat(2), if statx(2) is not supported on the host.
+ 		//
+diff --git a/runsc/cmd/gofer.go b/runsc/cmd/gofer.go
+index f9646d5..ba0d3f2 100644
+--- a/runsc/cmd/gofer.go
++++ b/runsc/cmd/gofer.go
+@@ -358,13 +358,20 @@ func (g *Gofer) Execute(_ context.Context, f *flag.FlagSet, args ...any) subcomm
+ 		}
+ 	}
+ 
+-	if err := unix.Chroot(root); err != nil {
+-		util.Fatalf("failed to chroot to %q: %v", root, err)
+-	}
+-	if err := unix.Chdir("/"); err != nil {
+-		util.Fatalf("changing working dir: %v", err)
++	if conf.AndroidHost {
++		// Unprivileged Android apps cannot chroot. lisafs still resolves every
++		// path component relative to the mount FD without following symlinks,
++		// and the Android app sandbox confines this process.
++		log.Infof("Android host: serving %q without chroot", root)
++	} else {
++		if err := unix.Chroot(root); err != nil {
++			util.Fatalf("failed to chroot to %q: %v", root, err)
++		}
++		if err := unix.Chdir("/"); err != nil {
++			util.Fatalf("changing working dir: %v", err)
++		}
++		log.Infof("Process chroot'd to %q", root)
+ 	}
+-	log.Infof("Process chroot'd to %q", root)
+ 
+ 	// Drop all supplementary groups (syscall.Setgroups applies to every thread)
+ 	// so that an application with none matches ours and connects to host
+@@ -425,6 +432,23 @@ func (g *Gofer) serve(spec *specs.Spec, conf *config.Config, root string, ruid i
+ 		devGofer bool
+ 	}
+ 	cfgs := make([]connectionConfig, 0, len(spec.Mounts)+1)
++	// servedPath maps a path inside the container to the path this process
++	// opens: identical when chroot()ed, prefixed with root otherwise.
++	servedPath := func(p string) string {
++		if conf.AndroidHost {
++			return filepath.Join(root, p)
++		}
++		return p
++	}
++	// servedMountPath is where a container mount is served from. Without
++	// host bind mounts (Android host), bind mounts are served from their
++	// source directly.
++	servedMountPath := func(m *specs.Mount) string {
++		if conf.AndroidHost && m.Type == "bind" {
++			return m.Source
++		}
++		return servedPath(m.Destination)
++	}
+ 
+ 	ioFDs := g.ioFDs
+ 	rootfsConf := g.mountConfs[0]
+@@ -432,7 +456,7 @@ func (g *Gofer) serve(spec *specs.Spec, conf *config.Config, root string, ruid i
+ 		// Start with root mount, then add any other additional mount as needed.
+ 		cfgs = append(cfgs, connectionConfig{
+ 			sock:      sandboxsetup.NewSocket(ioFDs[0]),
+-			mountPath: "/", // fsgofer process is always chroot()ed. So serve root.
++			mountPath: servedPath("/"), // "/" when chroot()ed.
+ 			readonly:  spec.Root.Readonly || rootfsConf.ShouldUseOverlayfs(),
+ 		})
+ 		log.Infof("Serving %q mapped to %q on FD %d (ro: %t)", "/", root, ioFDs[0], cfgs[0].readonly)
+@@ -462,7 +486,7 @@ func (g *Gofer) serve(spec *specs.Spec, conf *config.Config, root string, ruid i
+ 		readonly := specutils.IsReadonlyMount(m.Options) || mountConf.ShouldUseOverlayfs()
+ 		cfgs = append(cfgs, connectionConfig{
+ 			sock:      sandboxsetup.NewSocket(ioFD),
+-			mountPath: m.Destination,
++			mountPath: servedMountPath(m),
+ 			readonly:  readonly,
+ 			mount:     m,
+ 		})
+@@ -482,6 +506,9 @@ func (g *Gofer) serve(spec *specs.Spec, conf *config.Config, root string, ruid i
+ 		log.Infof("Serving /dev mapped on FD %d (ro: false)", g.devIoFD)
+ 	}
+ 
++	if conf.AndroidHost {
++		fsgofer.EnableRootIDMapping(euid, egid)
++	}
+ 	// These are global fsgofer configurations.
+ 	fsgoferConf := &fsgofer.Config{
+ 		HostUDS:            conf.GetHostUDS(),
+diff --git a/runsc/cmd/sandboxsetup/gofer_mount.go b/runsc/cmd/sandboxsetup/gofer_mount.go
+index ca89203..654072d 100644
+--- a/runsc/cmd/sandboxsetup/gofer_mount.go
++++ b/runsc/cmd/sandboxsetup/gofer_mount.go
+@@ -140,8 +140,12 @@ func SetupRootFS(spec *specs.Spec, conf *config.Config, mountConfs []specutils.G
+ 	// Convert all shared mounts into slaves to be sure that nothing will be
+ 	// propagated outside of our namespace.
+ 	procPath := "/proc"
+-	if err := specutils.SafeMount("", "/", "", unix.MS_SLAVE|unix.MS_REC, "", procPath); err != nil {
+-		util.Fatalf("error converting mounts: %v", err)
++	// Without a private mount namespace (Android host) there is nothing to
++	// isolate, and the change would be refused anyway.
++	if !conf.AndroidHost {
++		if err := specutils.SafeMount("", "/", "", unix.MS_SLAVE|unix.MS_REC, "", procPath); err != nil {
++			util.Fatalf("error converting mounts: %v", err)
++		}
+ 	}
+ 
+ 	goferRootFs := spec.Root.Path
+@@ -189,7 +193,12 @@ func SetupRootFS(spec *specs.Spec, conf *config.Config, mountConfs []specutils.G
+ 		procPath = "/proc/fs/proc"
+ 	}
+ 
+-	if rootfsConf.ShouldUseLisafs() {
++	if rootfsConf.ShouldUseLisafs() && conf.AndroidHost {
++		// Android host: no mount namespace, so the gofer serves the rootfs
++		// directory in place (no self-bind mount, no propagation change).
++		containerRootFs = spec.Root.Path
++		goferRootFs = spec.Root.Path
++	} else if rootfsConf.ShouldUseLisafs() {
+ 		if !hasCreateContainerHooks {
+ 			// Prepare the root at its named staging path. When spec.Root.Path
+ 			// is "/", self-binding it would overmount the process's root;
+@@ -260,7 +269,7 @@ func SetupRootFS(spec *specs.Spec, conf *config.Config, mountConfs []specutils.G
+ 		}
+ 
+ 		// Check if root needs to be remounted as readonly.
+-		if spec.Root.Readonly || rootfsConf.ShouldUseOverlayfs() {
++		if (spec.Root.Readonly || rootfsConf.ShouldUseOverlayfs()) && !conf.AndroidHost {
+ 			// If root is a mount point but not read-only, we can change mount options
+ 			// to make it read-only for extra safety.
+ 			// unix.MS_NOSUID and unix.MS_NODEV are included here not only
+@@ -386,6 +395,11 @@ func SetupMounts(conf *config.Config, mounts []specs.Mount, root, procPath strin
+ 		if !mountConf.ShouldUseLisafs() {
+ 			continue
+ 		}
++		if conf.AndroidHost {
++			// No host bind mounts without privileges: the gofer serves
++			// m.Source directly (see Gofer.serve).
++			continue
++		}
+ 
+ 		dst, err := ResolveSymlinks(root, m.Destination)
+ 		if err != nil {
+diff --git a/runsc/config/config.go b/runsc/config/config.go
+index 923fe18..b149215 100644
+--- a/runsc/config/config.go
++++ b/runsc/config/config.go
+@@ -437,6 +437,13 @@ type Config struct {
+ 	// disabling chroot, the container root path should not have a symlink.
+ 	TestOnlyAllowRunAsCurrentUserWithoutChroot bool `flag:"TESTONLY-unsafe-nonroot"`
+ 
++	// AndroidHost runs the gofer and sandbox as the current (unprivileged)
++	// user without any Linux namespaces, chroot or capability changes. It is
++	// meant for Android app processes, where the kernel has no user
++	// namespaces and the app sandbox (SELinux + seccomp) isolates the host.
++	// Implies TestOnlyAllowRunAsCurrentUserWithoutChroot.
++	AndroidHost bool `flag:"android-host"`
++
+ 	// TestOnlyTestNameEnv should only be used in tests. It looks up for the
+ 	// test name in the container environment variables and adds it to the debug
+ 	// log file name. This is done to help identify the log with the test when
+diff --git a/runsc/config/flags.go b/runsc/config/flags.go
+index b6344de..834611a 100644
+--- a/runsc/config/flags.go
++++ b/runsc/config/flags.go
+@@ -207,6 +207,8 @@ func RegisterFlags(flagSet *flag.FlagSet) {
+ 	flagSet.Bool("rdmaproxy", false, "WIP: enable RDMA support for containers with /dev/infiniband/uverbs* devices.")
+ 	flagSet.Bool("tpuproxy", false, "LEGACY: enable support for TPU devices. TPU support gets automatically enabled if TPU devices are present in the OCI spec.")
+ 
++	flagSet.Bool("android-host", false, "run without namespaces, chroot or capability changes, as the current user (for Android app processes, whose kernels lack user namespaces).")
++
+ 	// Test flags, not to be used outside tests, ever.
+ 	flagSet.Bool("TESTONLY-unsafe-nonroot", false, "TEST ONLY; do not ever use! This skips many security measures that isolate the host from the sandbox.")
+ 	flagSet.String("TESTONLY-test-name-env", "", "TEST ONLY; do not ever use! Used for automated tests to improve logging.")
+@@ -365,6 +367,14 @@ func NewFromFlags(flagSet *flag.FlagSet) (*Config, error) {
+ 		conf.cliStateEngine = &v
+ 	}
+ 
++	if conf.AndroidHost {
++		// Android app processes cannot chroot or switch users either.
++		conf.TestOnlyAllowRunAsCurrentUserWithoutChroot = true
++		// All file access goes through the gofer, which emulates the
++		// root ID mapping that a user namespace would otherwise provide.
++		conf.DirectFS = false
++	}
++
+ 	if len(conf.RootDir) == 0 {
+ 		// If not set, set default root dir to something (hopefully) user-writeable.
+ 		conf.RootDir = DefaultRootDir()
+diff --git a/runsc/container/container.go b/runsc/container/container.go
+index 858d0f8..951221d 100644
+--- a/runsc/container/container.go
++++ b/runsc/container/container.go
+@@ -19,6 +19,7 @@ import (
+ 	"bufio"
+ 	"errors"
+ 	"fmt"
++	"gvisor.dev/gvisor/pkg/hostcompat"
+ 	"math"
+ 	"os"
+ 	"os/exec"
+@@ -1440,7 +1441,7 @@ func (c *Container) createGoferFilestoreInSelf(goferRootfs string, mountSrc stri
+ 	}
+ 	defer unix.Close(dirFD)
+ 
+-	filestoreFD, err := unix.Openat2(dirFD, fileName, &unix.OpenHow{
++	filestoreFD, err := hostcompat.Openat2Single(dirFD, fileName, &unix.OpenHow{
+ 		Flags:   uint64(createFlags),
+ 		Mode:    0666,
+ 		Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_MAGICLINKS | unix.RESOLVE_NO_XDEV,
+@@ -2021,6 +2022,8 @@ func (c *Container) createGoferProcess(conf *config.Config, specFile *os.File, m
+ 				cmd.SysProcAttr.GidMappingsEnableSetgroups = true
+ 			}
+ 		}
++	} else if _, ok := specutils.GetNS(specs.UserNamespace, c.Spec); !ok && conf.AndroidHost {
++		log.Infof("Android host: gofer runs as the current user without a user namespace")
+ 	} else {
+ 		userNS, ok := specutils.GetNS(specs.UserNamespace, c.Spec)
+ 		if !ok {
+@@ -2067,6 +2070,10 @@ func (c *Container) createGoferProcess(conf *config.Config, specFile *os.File, m
+ 	donation.LogDonations(cmd)
+ 
+ 	log.Debugf("Starting gofer: %s %v", cmd.Path, cmd.Args)
++	if conf.AndroidHost {
++		// No namespaces can be created by an unprivileged Android app.
++		nss = nil
++	}
+ 	if err := specutils.StartInNS(cmd, nss); err != nil {
+ 		return nil, nil, nil, nil, fmt.Errorf("gofer: %v", err)
+ 	}
+@@ -2676,6 +2683,11 @@ func getIdentityMapping(mapFileName string) ([]specs.LinuxIDMapping, error) {
+ 	// are organized.
+ 	mapFile := path.Join("/proc/self", mapFileName)
+ 	file, err := os.Open(mapFile)
++	if os.IsNotExist(err) {
++		// Kernel built without CONFIG_USER_NS (e.g. Android): every process is
++		// in the initial user namespace, i.e. a full identity mapping.
++		return []specs.LinuxIDMapping{{ContainerID: 0, HostID: 0, Size: math.MaxUint32}}, nil
++	}
+ 	if err != nil {
+ 		return nil, fmt.Errorf("failed to open %s: %v", mapFile, err)
+ 	}
+diff --git a/runsc/gofer/fs/lisafs.go b/runsc/gofer/fs/lisafs.go
+index 10daf6d..379c44d 100644
+--- a/runsc/gofer/fs/lisafs.go
++++ b/runsc/gofer/fs/lisafs.go
+@@ -19,6 +19,7 @@ package fs
+ import (
+ 	"bytes"
+ 	"fmt"
++	"gvisor.dev/gvisor/pkg/hostcompat"
+ 	"io"
+ 	"math"
+ 	"os"
+@@ -313,10 +314,7 @@ func (fd *controlFDLisa) getParentFD() (int, string, error) {
+ 	// Unlike openat(2), openat2(2) fails with EINVAL when O_PATH is combined
+ 	// with flags other than O_CLOEXEC, O_DIRECTORY and O_NOFOLLOW, so
+ 	// openFlags (which has O_NOCTTY) can't be used here.
+-	parent, err := unix.Openat2(unix.AT_FDCWD, path.Dir(filePath), &unix.OpenHow{
+-		Flags:   unix.O_PATH | unix.O_CLOEXEC | unix.O_NOFOLLOW,
+-		Resolve: unix.RESOLVE_NO_SYMLINKS,
+-	})
++	parent, err := hostcompat.OpenPathNoSymlinks(path.Dir(filePath), unix.O_PATH|unix.O_CLOEXEC|unix.O_NOFOLLOW)
+ 	return parent, path.Base(filePath), err
+ }
+ 
+@@ -1482,12 +1480,33 @@ func tryOpen(open func(int) (int, error)) (hostFD int, err error) {
+ 	return
+ }
+ 
++// rootIDMap emulates the user namespace that an unprivileged gofer would
++// normally run in (uid/gid 0 inside == the gofer's own IDs outside) on hosts
++// without user namespaces, such as Android. Files owned by the gofer's user
++// appear owned by root, and ownership changes are accepted without changing
++// the host file (an unprivileged process cannot chown to other users).
++var rootIDMap struct {
++	enabled  bool
++	uid, gid uint32
++}
++
++// EnableRootIDMapping turns on rootIDMap for the gofer's effective IDs.
++func EnableRootIDMapping(uid, gid int) {
++	rootIDMap.enabled = true
++	rootIDMap.uid = uint32(uid)
++	rootIDMap.gid = uint32(gid)
++}
++
+ func fchown(hostFD int, uid lisafs.UID, gid lisafs.GID) error {
+ 	// "If the owner or group is specified as -1, then that ID is not changed"
+ 	// - chown(2). Only bother making the syscall if the owner is changing.
+ 	if !uid.Ok() && !gid.Ok() {
+ 		return nil
+ 	}
++	if rootIDMap.enabled {
++		// Every guest ID maps onto the single host ID that owns the files.
++		return nil
++	}
+ 	u := -1
+ 	g := -1
+ 	if uid.Ok() {
+@@ -1499,9 +1518,23 @@ func fchown(hostFD int, uid lisafs.UID, gid lisafs.GID) error {
+ 	return unix.Fchownat(hostFD, "", u, g, unix.AT_EMPTY_PATH|unix.AT_SYMLINK_NOFOLLOW)
+ }
+ 
++func hostToGuestUID(uid uint32) uint32 {
++	if rootIDMap.enabled && uid == rootIDMap.uid {
++		return 0
++	}
++	return uid
++}
++
++func hostToGuestGID(gid uint32) uint32 {
++	if rootIDMap.enabled && gid == rootIDMap.gid {
++		return 0
++	}
++	return gid
++}
++
+ func fstatTo(hostFD int) (lisafs.Statx, error) {
+ 	var stat unix.Statx_t
+-	if err := unix.Statx(hostFD, "", unix.AT_EMPTY_PATH, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat); err != nil {
++	if err := hostcompat.Statx(hostFD, "", unix.AT_EMPTY_PATH, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stat); err != nil {
+ 		return lisafs.Statx{}, err
+ 	}
+ 	return lisafs.Statx{
+@@ -1511,8 +1544,8 @@ func fstatTo(hostFD int) (lisafs.Statx, error) {
+ 		DevMajor:  stat.Dev_major,
+ 		Ino:       stat.Ino,
+ 		Nlink:     stat.Nlink,
+-		UID:       stat.Uid,
+-		GID:       stat.Gid,
++		UID:       hostToGuestUID(stat.Uid),
++		GID:       hostToGuestGID(stat.Gid),
+ 		RdevMinor: stat.Rdev_minor,
+ 		RdevMajor: stat.Rdev_major,
+ 		Size:      stat.Size,
+diff --git a/runsc/sandbox/sandbox.go b/runsc/sandbox/sandbox.go
+index b1d51b8..6e9f65f 100644
+--- a/runsc/sandbox/sandbox.go
++++ b/runsc/sandbox/sandbox.go
+@@ -19,6 +19,7 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"gvisor.dev/gvisor/pkg/hostcompat"
+ 	"io"
+ 	"io/fs"
+ 	"math"
+@@ -780,7 +781,7 @@ func openCheckpointFile(dirFD int, dir, name string, flags int) (*os.File, error
+ 	if flags&unix.O_CREAT != 0 {
+ 		how.Mode = 0644
+ 	}
+-	fd, err := unix.Openat2(dirFD, name, &how)
++	fd, err := hostcompat.Openat2Single(dirFD, name, &how)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -1420,7 +1421,7 @@ func (s *Sandbox) createSandboxProcess(conf *config.Config, args *Args) error {
+ 				cmd.SysProcAttr.Credential = &syscall.Credential{Uid: 0, Gid: 0}
+ 			}
+ 		} else {
+-			if rootlessEUID {
++			if rootlessEUID && !conf.AndroidHost {
+ 				return fmt.Errorf("unable to run a rootless container without userns")
+ 			}
+ 			log.Infof("Sandbox will be started in the current user namespace")
+@@ -1635,6 +1636,10 @@ func (s *Sandbox) createSandboxProcess(conf *config.Config, args *Args) error {
+ 	log.Debugf("SysProcAttr: %+v", cmd.SysProcAttr)
+ 	// Pass the current time so the sandbox process knows when it was spawned.
+ 	cmd.Env = starttime.SpawnEnviron(cmd.Env)
++	if conf.AndroidHost {
++		// No namespaces can be created by an unprivileged Android app.
++		nss = nil
++	}
+ 	if err := specutils.StartInNS(cmd, nss); err != nil {
+ 		err := fmt.Errorf("starting sandbox: %v", err)
+ 		// If the sandbox failed to start, it may be because the binary
+diff --git a/runsc/specutils/specutils.go b/runsc/specutils/specutils.go
+index bc3b412..df60e5f 100644
+--- a/runsc/specutils/specutils.go
++++ b/runsc/specutils/specutils.go
+@@ -20,6 +20,7 @@ import (
+ 	"bytes"
+ 	"encoding/json"
+ 	"fmt"
++	"gvisor.dev/gvisor/pkg/hostcompat"
+ 	"io"
+ 	"math"
+ 	"os"
+@@ -668,6 +669,9 @@ func IsProcessRunning(pid int, identity uint64) (bool, error) {
+ 		return false, nil
+ 	}
+ 	pidfd, err := OpenProcess(pid, identity)
++	if err == unix.ENOSYS {
++		return hostcompat.ProcessRunning(pid), nil
++	}
+ 	if err != nil {
+ 		if err == unix.ESRCH {
+ 			return false, nil
+@@ -696,6 +700,9 @@ const PIDFS_MAGIC = 0x50494446
+ // that is stable and unique. Returns 0 on hosts without `pidfs`.
+ func ProcessIdentity(pid int) (uint64, error) {
+ 	pidfd, err := OpenProcess(pid, 0)
++	if err == unix.ENOSYS {
++		return 0, nil // No pidfs either; identity checks are skipped.
++	}
+ 	if err != nil {
+ 		return 0, fmt.Errorf("cannot open pidfd for process %d: %w", pid, err)
+ 	}
+@@ -722,7 +729,13 @@ func pidfdIdentity(pidfd int) (uint64, error) {
+ // identity, or `unix.ESRCH` if there is no such process.
+ // If `identity` is 0, is matches any process with the given PID.
+ func OpenProcess(pid int, identity uint64) (int, error) {
++	if !hostcompat.PidfdSupported() {
++		return -1, unix.ENOSYS
++	}
+ 	pidfd, err := unix.PidfdOpen(pid, 0)
++	if err == unix.ENOSYS {
++		hostcompat.MarkNoPidfd()
++	}
+ 	if err == unix.EINVAL {
+ 		return -1, unix.ESRCH // pid is a thread, not a process.
+ 	}
+@@ -749,6 +762,13 @@ func KillProcess(pid int, identity uint64) error {
+ 	if err == unix.ESRCH {
+ 		return nil
+ 	}
++	if err == unix.ENOSYS {
++		// Kernel without pidfds (e.g. Android 9): plain kill(2).
++		if err := unix.Kill(pid, unix.SIGKILL); err != nil && err != unix.ESRCH {
++			return fmt.Errorf("cannot kill process %d: %w", pid, err)
++		}
++		return nil
++	}
+ 	if err != nil {
+ 		return fmt.Errorf("cannot open pidfd for process %d: %w", pid, err)
+ 	}
+@@ -772,6 +792,16 @@ func WaitForNonChildExit(pid int, identity uint64, timeout time.Duration) error
+ 	if err == unix.ESRCH {
+ 		return nil // Already gone.
+ 	}
++	if err == unix.ENOSYS {
++		deadline := time.Now().Add(timeout)
++		for hostcompat.ProcessRunning(pid) {
++			if time.Now().After(deadline) {
++				return fmt.Errorf("process %d is still running after %v", pid, timeout)
++			}
++			time.Sleep(20 * time.Millisecond)
++		}
++		return nil
++	}
+ 	if err != nil {
+ 		return fmt.Errorf("cannot open pidfd for process %d: %w", pid, err)
+ 	}
+diff --git a/tools/evos_precompile/main.go b/tools/evos_precompile/main.go
+new file mode 100644
+index 0000000..dcc83ea
+--- /dev/null
++++ b/tools/evos_precompile/main.go
+@@ -0,0 +1,120 @@
++// Copyright 2026 The gVisor Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++// Binary evos_precompile regenerates the platform stub seccomp programs for
++// the architecture it runs on. The Go-branch checkout ships these files
++// precompiled for amd64 only, so arm64 builds outside Bazel must run this
++// (natively or under qemu-user) before compiling runsc.
++//
++// Usage: evos_precompile <gvisor source root>
++package main
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++	"runtime"
++	"sort"
++	"strings"
++
++	"gvisor.dev/gvisor/pkg/seccomp/precompiledseccomp"
++	kvmfilter "gvisor.dev/gvisor/pkg/sentry/platform/kvm/mmapfilter"
++	ptracefilter "gvisor.dev/gvisor/pkg/sentry/platform/ptrace/stubfilter"
++	systrapfilter "gvisor.dev/gvisor/pkg/sentry/platform/systrap/stubfilter"
++)
++
++const header = `// Copyright 2023 The gVisor Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++// Code generated by tools/evos_precompile for GOARCH=%s. DO NOT EDIT.
++
++package %s
++
++import (
++	"gvisor.dev/gvisor/pkg/seccomp/precompiledseccomp"
++)
++
++var (
++	// precompiledProgramNames is the sorted list of all precompiled program
++	// names. It is populated at generation time and used by ` + "`ListPrecompiled`" + `.
++	precompiledProgramNames = []string{
++%s	}
++)
++
++// PrecompilationDisabledAtBuildTime is a constant that is used to
++// indicate that precompilation was disabled at build time.
++const PrecompilationDisabledAtBuildTime = false
++
++// GetPrecompiled returns the precompiled program for the given name,
++// and whether that program name exists.
++func GetPrecompiled(programName string) (precompiledseccomp.Program, bool) {
++	switch programName {
++%s	}
++	return precompiledseccomp.Program{}, false
++}
++
++// ListPrecompiled returns a list of all registered program names.
++func ListPrecompiled() []string {
++	return append([]string(nil), precompiledProgramNames...)
++}
++`
++
++type target struct {
++	path string
++	pkg  string
++	fn   func() ([]precompiledseccomp.Program, error)
++}
++
++func main() {
++	if len(os.Args) != 2 {
++		fmt.Fprintln(os.Stderr, "usage: evos_precompile <gvisor source root>")
++		os.Exit(2)
++	}
++	root := os.Args[1]
++	targets := []target{
++		{"pkg/sentry/platform/systrap/stubfilter_precompiled.go", "systrap", systrapfilter.PrecompiledPrograms},
++		{"pkg/sentry/platform/ptrace/stubfilter_precompiled.go", "ptrace", ptracefilter.PrecompiledPrograms},
++		{"pkg/sentry/platform/kvm/mmapfilter_precompiled.go", "kvm", kvmfilter.PrecompiledPrograms},
++	}
++	for _, t := range targets {
++		programs, err := t.fn()
++		if err != nil {
++			fmt.Fprintf(os.Stderr, "%s: %v\n", t.path, err)
++			os.Exit(1)
++		}
++		sort.Slice(programs, func(i, j int) bool { return programs[i].Name < programs[j].Name })
++		var names, cases strings.Builder
++		for _, p := range programs {
++			fmt.Fprintf(&names, "\t%q,\n", p.Name)
++			cases.WriteString(p.SwitchCase("precompiledseccomp"))
++		}
++		out := fmt.Sprintf(header, runtime.GOARCH, t.pkg, names.String(), cases.String())
++		if err := os.WriteFile(filepath.Join(root, t.path), []byte(out), 0o644); err != nil {
++			fmt.Fprintln(os.Stderr, err)
++			os.Exit(1)
++		}
++		fmt.Printf("%s: %d programs for %s\n", t.path, len(programs), runtime.GOARCH)
++	}
++}
