@@ -1,0 +1,102 @@
+name: Publish Experience UI chagalllte (device build + TWRP)
+
+# Rebuilds the Experience UI package and reskinned TWRP for the Galaxy Tab S 10.5
+# (chagalllte) from their public source images via scripts/gsi/repack-chagall.sh, then
+# publishes a GitHub pre-release. Direct release creation is blocked for interactive
+# sessions, so publishing happens here (GitHub Actions is the permitted path).
+#
+# base_url is a workflow input (the LineageOS chagalllte zip download URL, e.g. a Google
+# Drive share link) so the link is not committed to the repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Download URL (or Google Drive file id) for lineage-18.1-20221230-UNOFFICIAL-chagalllte.zip"
+        required: true
+      publish:
+        description: "Publish the GitHub pre-release"
+        type: boolean
+        default: true
+      tag:
+        description: "Release tag"
+        default: "experience-ui-1.0.0-chagalllte"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: experience-chagall
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build ID
+        id: id
+        run: echo "build_id=$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+
+      - name: System tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq e2fsprogs android-sdk-libsparse-utils mkbootimg cpio lz4 \
+            xz-utils fonts-inter fontconfig > /dev/null
+          python3 -m pip install -q brotli asn1crypto cryptography pillow
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "platforms;android-30" "build-tools;35.0.0" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > apps/experience-suite/local.properties
+
+      - name: Rebuild chagalllte package + TWRP
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          EXPERIENCE_BUILD_ID: ${{ steps.id.outputs.build_id }}
+        run: bash scripts/gsi/repack-chagall.sh "$RUNNER_TEMP/out"
+
+      - name: Collect assets
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          cp "$RUNNER_TEMP/out"/*.zip "$RUNNER_TEMP/out"/*.zip.sha256 "$RUNNER_TEMP/out"/*.img \
+             "$RUNNER_TEMP/out"/ExperienceTWRP-chagalllte.tar.md5 "$RUNNER_TEMP/out"/ExperienceTWRP-chagalllte.sha256 \
+             "$RUNNER_TEMP/out"/*.txt "$RUNNER_TEMP/out"/repack-manifest.json assets/
+          ls -la assets
+
+      - name: Upload assets as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-ui-chagalllte-${{ steps.id.outputs.build_id }}
+          path: assets/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish pre-release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='${{ inputs.tag }}'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::release $tag already exists; choose another tag or delete it"
+            exit 1
+          fi
+          gh release create "$tag" assets/* \
+            --prerelease \
+            --title "Experience UI 1.0 + TWRP — Galaxy Tab S 10.5 (chagalllte)" \
+            --notes-file docs/releases/experience-ui-1.0.0-chagalllte.md \
+            --target "$GITHUB_SHA"
+          echo "Published: $(gh release view "$tag" --json url --jq .url)"
