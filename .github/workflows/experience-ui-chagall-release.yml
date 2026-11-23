@@ -9,6 +9,11 @@ name: Publish Experience UI chagalllte (device build + TWRP)
 # Drive share link) so the link is not committed to the repo.
 
 on:
+  # The push trigger (workflow file only) registers this workflow so it can be
+  # dispatched by API; the job is guarded to run only on workflow_dispatch.
+  push:
+    paths:
+      - ".github/workflows/experience-ui-chagall-release.yml"
   workflow_dispatch:
     inputs:
       base_url:
@@ -31,6 +36,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
