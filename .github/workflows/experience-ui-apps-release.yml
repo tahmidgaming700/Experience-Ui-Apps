@@ -1,0 +1,104 @@
+name: Publish Experience apps (Android 9+)
+
+# Builds the 14 Experience apps for Android 9 (minSdk 28), test-key signs them, and
+# publishes a GitHub pre-release. Direct release creation is blocked for interactive
+# sessions, so publishing happens here (GitHub Actions is the permitted path).
+
+on:
+  # Push (workflow file only) registers the workflow so it can be dispatched by API;
+  # the job runs only on workflow_dispatch.
+  push:
+    paths:
+      - ".github/workflows/experience-ui-apps-release.yml"
+  workflow_dispatch:
+    inputs:
+      min_sdk:
+        description: "minSdk (28 = Android 9)"
+        default: "28"
+      publish:
+        description: "Publish the GitHub pre-release"
+        type: boolean
+        default: true
+      tag:
+        description: "Release tag"
+        default: "experience-ui-1.0.0-apps-android9"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: experience-apps-release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > apps/experience-suite/local.properties
+
+      - name: Build release APKs (minSdk ${{ inputs.min_sdk }})
+        working-directory: apps/experience-suite
+        run: ./gradlew --no-daemon --console=plain -Pexperience.minSdk=${{ inputs.min_sdk }} lintDebug assembleRelease
+
+      - name: Sign with a throwaway test key
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          keytool -genkeypair -keystore apps.jks -storepass experience -keypass experience \
+            -alias experience -keyalg RSA -keysize 3072 -validity 10000 \
+            -dname "CN=Experience UI Test, O=Experience" >/dev/null 2>&1
+          mkdir -p out
+          declare -A N=( [launcher]=Launcher [settings]=Settings [setupwizard]=SetupWizard [dialer]=Dialer
+            [messages]=Messages [contacts]=Contacts [notes]=Notes [clock]=Clock [calendar]=Calendar
+            [calculator]=Calculator [files]=Files [gallery]=Gallery [camera]=Camera [converter]=Converter )
+          for m in "${!N[@]}"; do
+            in="apps/experience-suite/$m/build/outputs/apk/release/$m-release-unsigned.apk"
+            out="out/Experience${N[$m]}.apk"
+            "$BT/zipalign" -p -f 4 "$in" "$out.t"
+            "$BT/apksigner" sign --v4-signing-enabled false --ks apps.jks --ks-pass pass:experience \
+              --ks-key-alias experience --out "$out" "$out.t"
+            rm -f "$out.t"
+          done
+          cp docs/releases/experience-ui-apps-android9.md out/README.md
+          ( cd out && sha256sum ./*.apk > SHA256SUMS && zip -q ExperienceUI-apps-android9.zip ./*.apk README.md SHA256SUMS )
+          ls -la out
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-ui-apps-android9
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish pre-release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='${{ inputs.tag }}'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::release $tag already exists; choose another tag or delete it"
+            exit 1
+          fi
+          gh release create "$tag" out/*.apk out/ExperienceUI-apps-android9.zip out/SHA256SUMS out/README.md \
+            --prerelease \
+            --title "Experience apps for Android 9+ (1.0.0)" \
+            --notes-file docs/releases/experience-ui-apps-android9.md \
+            --target "$GITHUB_SHA"
+          echo "Published: $(gh release view "$tag" --json url --jq .url)"

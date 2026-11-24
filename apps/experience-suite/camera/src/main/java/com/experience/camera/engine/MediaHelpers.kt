@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import android.util.Size
 import kotlinx.coroutines.Dispatchers
@@ -16,8 +17,19 @@ import java.io.ByteArrayInputStream
 /** MediaStore and JPEG helpers (run off the main thread). */
 object MediaHelpers {
 
+    @Suppress("DEPRECATION")
     suspend fun thumbnail(context: Context, uri: Uri, sizePx: Int): Bitmap? = withContext(Dispatchers.IO) {
-        runCatching { context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null) }.getOrNull()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching { context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null) }.getOrNull()
+        } else {
+            // Android 9: ContentResolver.loadThumbnail did not exist; downscale the full image.
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeStream(input, null, opts)
+                }
+            }.getOrNull()
+        }
     }
 
     /**

@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         // Experience UI is an Android 11 (API 30) operating system.
-        minSdk = 30
+        minSdk = providers.gradleProperty("experience.minSdk").map { it.toInt() }.getOrElse(30)
         consumerProguardFiles("consumer-rules.pro")
     }
 

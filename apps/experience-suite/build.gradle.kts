@@ -26,7 +26,7 @@ subprojects {
         extensions.configure<ApplicationExtension> {
             compileSdk = 35
             defaultConfig {
-                minSdk = 30
+                minSdk = providers.gradleProperty("experience.minSdk").map { it.toInt() }.getOrElse(30)
                 targetSdk = 30
                 versionCode = experienceVersionCode
                 versionName = experienceVersionName
