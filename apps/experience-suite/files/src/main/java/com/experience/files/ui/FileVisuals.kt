@@ -123,11 +123,25 @@ private suspend fun makeThumb(file: File, kind: Kind, px: Int): Bitmap? = suspen
     cont.invokeOnCancellation { signal.cancel() }
     val bmp = runCatching {
         val s = Size(px, px)
-        when (kind) {
-            Kind.IMAGE -> ThumbnailUtils.createImageThumbnail(file, s, signal)
-            Kind.VIDEO -> ThumbnailUtils.createVideoThumbnail(file, s, signal)
-            Kind.AUDIO -> ThumbnailUtils.createAudioThumbnail(file, s, signal)
-            else -> null
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            when (kind) {
+                Kind.IMAGE -> ThumbnailUtils.createImageThumbnail(file, s, signal)
+                Kind.VIDEO -> ThumbnailUtils.createVideoThumbnail(file, s, signal)
+                Kind.AUDIO -> ThumbnailUtils.createAudioThumbnail(file, s, signal)
+                else -> null
+            }
+        } else {
+            // Android 9: use the pre-Q APIs (no audio thumbnails there).
+            @Suppress("DEPRECATION")
+            when (kind) {
+                Kind.IMAGE -> {
+                    val o = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
+                    android.graphics.BitmapFactory.decodeFile(file.absolutePath, o)
+                }
+                Kind.VIDEO -> ThumbnailUtils.createVideoThumbnail(
+                    file.absolutePath, android.provider.MediaStore.Images.Thumbnails.MINI_KIND)
+                else -> null
+            }
         }
     }.getOrNull()
     if (cont.isActive) cont.resumeWith(Result.success(bmp))

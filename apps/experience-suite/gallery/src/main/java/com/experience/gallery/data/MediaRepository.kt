@@ -1,5 +1,6 @@
 package com.experience.gallery.data
 
+import android.os.Build
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
@@ -118,7 +119,10 @@ object Thumbnails {
             suspendCancellableCoroutine<Bitmap?> { cont ->
                 val signal = CancellationSignal()
                 cont.invokeOnCancellation { signal.cancel() }
-                val result = runCatching { resolver.loadThumbnail(uri, Size(px, px), signal) }.getOrNull()
+                val result = runCatching {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) resolver.loadThumbnail(uri, Size(px, px), signal)
+                    else resolver.openInputStream(uri)?.use { @Suppress("DEPRECATION") android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }) }
+                }.getOrNull()
                 if (cont.isActive) cont.resumeWith(Result.success(result))
             }
         }

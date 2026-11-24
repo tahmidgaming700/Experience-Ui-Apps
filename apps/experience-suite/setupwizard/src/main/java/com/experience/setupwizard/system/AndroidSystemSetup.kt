@@ -1,5 +1,6 @@
 package com.experience.setupwizard.system
 
+import android.os.Build
 import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.role.RoleManager
@@ -178,6 +179,11 @@ class AndroidSystemSetup(context: Context) : SystemSetup {
 
     @Suppress("UNCHECKED_CAST")
     override suspend fun makeDefaultHome(packageName: String): Result<Unit> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            // The HOME role (RoleManager) is Android 10+. On Android 9 the user picks the
+            // default launcher from system settings; there is no in-app way to set it.
+            return Result.failure(SetupException("Set the default launcher in Settings on Android 9"))
+        }
         val rm = context.getSystemService(RoleManager::class.java)
             ?: return Result.failure(SetupException("Couldn't set the default home app: role service unavailable"))
         val prepared = attempt("set the default home app") {

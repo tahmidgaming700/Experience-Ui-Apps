@@ -1,5 +1,6 @@
 package com.experience.files.data
 
+import android.os.Build
 import android.app.usage.StorageStatsManager
 import android.content.ContentResolver
 import android.content.Context
@@ -55,7 +56,13 @@ class StorageRepository(private val context: Context) {
     fun volumes(): List<Volume> {
         val sm = context.getSystemService(StorageManager::class.java)
         return sm.storageVolumes.mapNotNull { v ->
-            val dir = v.directory ?: return@mapNotNull null // API 30: null when not mounted
+            // StorageVolume.getDirectory() is API 30. On Android 9/10 resolve the path via the
+            // hidden getPath() method, falling back to primary external storage.
+            val dir = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) v.directory
+                       else runCatching { v.javaClass.getMethod("getPathFile").invoke(v) as java.io.File }.getOrNull()
+                           ?: runCatching { java.io.File(v.javaClass.getMethod("getPath").invoke(v) as String) }.getOrNull()
+                           ?: Environment.getExternalStorageDirectory().takeIf { v.isPrimary })
+                ?: return@mapNotNull null
             val stat = runCatching { StatFs(dir.path) }.getOrNull() ?: return@mapNotNull null
             var total = stat.totalBytes
             var free = stat.availableBytes

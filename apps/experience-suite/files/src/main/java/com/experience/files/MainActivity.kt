@@ -1,5 +1,6 @@
 package com.experience.files
 
+import android.os.Build
 import android.app.Activity
 import android.content.ClipData
 import android.content.Intent
@@ -36,12 +37,18 @@ class MainActivity : ExperienceActivity() {
         PickerConfig(filters, intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false))
     }
 
+    // All-files access is Android 11 (MANAGE_EXTERNAL_STORAGE). On Android 9/10 fall back to
+    // the legacy WRITE_EXTERNAL_STORAGE grant, which gives broad storage access there.
+    private fun hasAllFiles(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager()
+        else checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
     @Composable
     override fun Content() {
-        var granted by remember { mutableStateOf(Environment.isExternalStorageManager()) }
+        var granted by remember { mutableStateOf(hasAllFiles()) }
         val owner = LocalLifecycleOwner.current
         DisposableEffect(owner) {
-            val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) granted = Environment.isExternalStorageManager() }
+            val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) granted = hasAllFiles() }
             owner.lifecycle.addObserver(obs)
             onDispose { owner.lifecycle.removeObserver(obs) }
         }

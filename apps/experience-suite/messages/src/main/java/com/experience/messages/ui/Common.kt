@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
+import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +48,9 @@ fun shortTime(context: Context, millis: Long): String {
 /** Offers to become the default SMS app; sending and receiving require the role. */
 @Composable
 fun SmsRoleBanner(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
+    // The SMS role (RoleManager) is Android 10+. On Android 9 use the system SMS-app
+    // picker from system settings instead; no in-app role banner.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
     val context = LocalContext.current
     val rm = remember { context.getSystemService(RoleManager::class.java) }
     var isDefault by remember { mutableStateOf(SmsSender.isDefaultSmsApp(context)) }

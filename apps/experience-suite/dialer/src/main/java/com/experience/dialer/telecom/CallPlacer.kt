@@ -1,5 +1,6 @@
 package com.experience.dialer.telecom
 
+import android.os.Build
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -30,10 +31,11 @@ class CallPlacer(private val context: Context) {
     fun isEmergency(number: String): Boolean {
         val n = number.filter { it.isDigit() || it == '+' }
         if (n.isEmpty()) return false
-        return runCatching { telephony?.isEmergencyNumber(n) == true }.getOrElse {
-            @Suppress("DEPRECATION")
-            runCatching { PhoneNumberUtils.isEmergencyNumber(n) }.getOrDefault(false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching { telephony?.isEmergencyNumber(n) == true }.getOrNull()?.let { return it }
         }
+        @Suppress("DEPRECATION")
+        return runCatching { PhoneNumberUtils.isEmergencyNumber(n) }.getOrDefault(false)
     }
 
     /** Call-capable accounts (needs READ_PHONE_STATE; empty without it). */

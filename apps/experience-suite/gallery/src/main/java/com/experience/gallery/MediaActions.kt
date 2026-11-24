@@ -1,5 +1,6 @@
 package com.experience.gallery
 
+import android.os.Build
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
@@ -44,15 +45,26 @@ object MediaActions {
     }
 
     /** System dialog asking the user to confirm deletion (Android 11 scoped storage). */
-    fun deleteRequest(context: Context, items: List<MediaItem>): IntentSenderRequest? = runCatching {
-        val pi = MediaStore.createDeleteRequest(context.contentResolver, items.filter { it.inMediaStore }.map { it.uri })
-        IntentSenderRequest.Builder(pi.intentSender).build()
-    }.getOrNull()
+    fun deleteRequest(context: Context, items: List<MediaItem>): IntentSenderRequest? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null  // API 30; pre-R deletes directly
+        return runCatching {
+            val pi = MediaStore.createDeleteRequest(context.contentResolver, items.filter { it.inMediaStore }.map { it.uri })
+            IntentSenderRequest.Builder(pi.intentSender).build()
+        }.getOrNull()
+    }
 
-    fun favoriteRequest(context: Context, items: List<MediaItem>, favorite: Boolean): IntentSenderRequest? = runCatching {
-        val pi = MediaStore.createFavoriteRequest(context.contentResolver, items.filter { it.inMediaStore }.map { it.uri }, favorite)
-        IntentSenderRequest.Builder(pi.intentSender).build()
-    }.getOrNull()
+    /** Direct delete for Android 9 (no system confirmation dialog). Returns rows removed. */
+    fun deleteDirect(context: Context, items: List<MediaItem>): Int = items.filter { it.inMediaStore }.sumOf {
+        runCatching { context.contentResolver.delete(it.uri, null, null) }.getOrDefault(0)
+    }
+
+    fun favoriteRequest(context: Context, items: List<MediaItem>, favorite: Boolean): IntentSenderRequest? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null  // favourites are API 30+
+        return runCatching {
+            val pi = MediaStore.createFavoriteRequest(context.contentResolver, items.filter { it.inMediaStore }.map { it.uri }, favorite)
+            IntentSenderRequest.Builder(pi.intentSender).build()
+        }.getOrNull()
+    }
 
     fun clip(uris: List<Uri>): ClipData = ClipData.newRawUri(null, uris[0]).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
 

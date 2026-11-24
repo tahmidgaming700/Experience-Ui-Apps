@@ -1,5 +1,6 @@
 package com.experience.dialer.incall
 
+import android.os.Build
 import android.telecom.Call
 import android.telecom.CallAudioState
 import android.telecom.PhoneAccountHandle
@@ -96,12 +97,13 @@ object CallManager {
             number = number,
             numberHidden = hidden,
             name = info?.name ?: d.callerDisplayName?.takeIf { it.isNotBlank() && d.callerDisplayNamePresentation == TelecomManager.PRESENTATION_ALLOWED }
-                ?: d.contactDisplayName,
+                ?: (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) d.contactDisplayName else null),
             photoUri = info?.photoUri,
             numberLabel = info?.label,
             connectTimeMillis = d.connectTimeMillis,
             disconnectReason = d.disconnectCause?.label?.toString()?.takeIf { it.isNotBlank() },
-            isIncoming = d.callDirection == Call.Details.DIRECTION_INCOMING,
+            isIncoming = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                d.callDirection == Call.Details.DIRECTION_INCOMING,
             isConference = d.hasProperty(Call.Details.PROPERTY_CONFERENCE),
             parentId = call.parent?.let { ids[it] },
             childIds = call.children.mapNotNull { ids[it] },

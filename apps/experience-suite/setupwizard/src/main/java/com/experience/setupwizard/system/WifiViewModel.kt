@@ -1,5 +1,6 @@
 package com.experience.setupwizard.system
 
+import android.os.Build
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Application
@@ -119,19 +120,27 @@ class WifiViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Adds and connects to [network]; WPA2/WPA3-Personal, open and enhanced-open only. */
     fun connect(network: WifiNetwork, password: String) {
+        val psk = if (password.length == 64 && password.all { it.isLetterOrDigit() }) password else "\"$password\""
+        val useParams = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R  // setSecurityParams is API 30
         val config = WifiConfiguration().apply {
             SSID = "\"${network.ssid}\""
             when (network.security) {
-                WifiSecurity.OPEN -> setSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN)
-                WifiSecurity.OWE -> setSecurityParams(WifiConfiguration.SECURITY_TYPE_OWE)
+                WifiSecurity.OPEN ->
+                    if (useParams) setSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN)
+                    else @Suppress("DEPRECATION") allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE)
                 // Transition-mode networks accept WPA2 clients; WPA2 is supported by every device.
                 WifiSecurity.PSK, WifiSecurity.PSK_SAE -> {
-                    setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK)
-                    preSharedKey = if (password.length == 64 && password.all { it.isLetterOrDigit() }) password else "\"$password\""
+                    if (useParams) setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK)
+                    else @Suppress("DEPRECATION") allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK)
+                    preSharedKey = psk
                 }
-                WifiSecurity.SAE -> {
-                    setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE)
-                    preSharedKey = "\"$password\""
+                WifiSecurity.OWE, WifiSecurity.SAE -> {
+                    if (!useParams) {
+                        _state.update { it.copy(error = "${network.security.label} (WPA3) needs Android 11; use Wi-Fi settings.") }
+                        return
+                    }
+                    setSecurityParams(if (network.security == WifiSecurity.OWE) WifiConfiguration.SECURITY_TYPE_OWE else WifiConfiguration.SECURITY_TYPE_SAE)
+                    if (network.security == WifiSecurity.SAE) preSharedKey = "\"$password\""
                 }
                 else -> {
                     _state.update { it.copy(error = "${network.security.label} networks can be added in Wi-Fi settings.") }

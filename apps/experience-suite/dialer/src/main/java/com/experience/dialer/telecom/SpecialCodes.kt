@@ -1,5 +1,6 @@
 package com.experience.dialer.telecom
 
+import android.os.Build
 import android.annotation.SuppressLint
 import android.content.Context
 import android.telephony.TelephonyManager
@@ -28,7 +29,8 @@ object SpecialCodes {
     @SuppressLint("MissingPermission", "HardwareIds")
     fun deviceIds(context: Context): List<String> {
         val tm = context.getSystemService(TelephonyManager::class.java) ?: return emptyList()
-        val count = runCatching { tm.activeModemCount }.getOrDefault(1)
+        val count = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) runCatching { tm.activeModemCount }.getOrDefault(1)
+                    else @Suppress("DEPRECATION") runCatching { tm.phoneCount }.getOrDefault(1)
         return (0 until count).mapNotNull { slot ->
             runCatching { tm.getImei(slot) }.getOrNull()?.let { "IMEI${if (count > 1) " ${slot + 1}" else ""}: $it" }
                 ?: runCatching { tm.getMeid(slot) }.getOrNull()?.let { "MEID${if (count > 1) " ${slot + 1}" else ""}: $it" }

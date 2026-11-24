@@ -1,5 +1,6 @@
 package com.experience.settings.ui.pages
 
+import android.os.Build
 import android.app.usage.StorageStatsManager
 import android.content.Context
 import android.content.Intent
@@ -49,7 +50,10 @@ private fun readStorage(context: Context): StorageInfo {
     val sm = context.getSystemService(StorageManager::class.java)
     val ssm = context.getSystemService(StorageStatsManager::class.java)
     val volumes = sm.storageVolumes.mapNotNull { v ->
-        val dir = v.directory ?: return@mapNotNull null
+        val dir = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) v.directory
+                   else runCatching { java.io.File(v.javaClass.getMethod("getPath").invoke(v) as String) }.getOrNull()
+                       ?: android.os.Environment.getExternalStorageDirectory().takeIf { v.isPrimary })
+            ?: return@mapNotNull null
         val stat = runCatching { StatFs(dir.path) }.getOrNull() ?: return@mapNotNull null
         var total = stat.totalBytes
         var free = stat.availableBytes

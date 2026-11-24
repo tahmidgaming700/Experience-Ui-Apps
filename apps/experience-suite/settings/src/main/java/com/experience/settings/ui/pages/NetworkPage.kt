@@ -1,5 +1,6 @@
 package com.experience.settings.ui.pages
 
+import android.os.Build
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -47,8 +48,13 @@ private fun readStatus(context: Context): NetworkStatus {
             val info = wm.connectionInfo
             // The SSID is only readable with location access (pre-granted in the ROM).
             val ssid = info?.ssid?.removeSurrounding("\"")?.takeIf { it.isNotBlank() && it != WifiManager.UNKNOWN_SSID }
-            val level = info?.let { wm.calculateSignalLevel(it.rssi) }
-            val bars = level?.let { "signal ${it}/${wm.maxSignalLevel}" }
+            val numLevels = 5
+            val level = info?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) wm.calculateSignalLevel(it.rssi)
+                else @Suppress("DEPRECATION") WifiManager.calculateSignalLevel(it.rssi, numLevels)
+            }
+            val maxLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) wm.maxSignalLevel else numLevels - 1
+            val bars = level?.let { "signal ${it}/$maxLevel" }
             val speed = info?.linkSpeed?.takeIf { it > 0 }?.let { "$it Mbps" }
             NetworkStatus(ssid ?: "Wi-Fi", listOfNotNull("Connected via Wi-Fi", bars, speed).joinToString(" · ") + suffix, validated)
         }
