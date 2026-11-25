@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Generate the Experience UI Setup Wizard welcome video (deterministic, from code).
 
-Renders the Experience mark (the four expressive tonal shapes) springing in over a dark
-Experience-indigo gradient, then "Welcome to Experience UI" fading in, with a gentle idle
-drift, and encodes a short looping H.264 MP4. Output goes to the setupwizard module's
-res/raw/welcome.mp4. Requires Pillow, numpy and ffmpeg (libx264), plus the Inter font.
+The Experience mark (four tonal shapes) springs in over a dark indigo gradient, then
+gives way to the big "EXPERIENCE / UI" logo with a pink->purple gradient — the same reveal
+as the boot animation — with a gentle gradient flow, encoded to a short looping H.264 MP4.
+Output: the setupwizard module's res/raw/welcome.mp4. Requires Pillow and ffmpeg (libx264)
+plus the Inter font (Inter-SemiBold + Inter-ExtraBold).
 
   generate-welcome-video.py <out.mp4> <inter_semibold.otf> [--preview-dir DIR]
 """
@@ -18,16 +19,23 @@ import tempfile
 from PIL import Image, ImageDraw, ImageFont
 
 W, H, FPS, SECONDS = 1280, 720, 24, 6
-SS = 2  # supersample
+SS = 2
 
-# Experience tonal palette (same mark as the boot animation).
-BG_TOP = (14, 15, 19)       # #0E0F13
-BG_BOT = (20, 24, 40)       # deep indigo
+BG_TOP = (14, 15, 19)
+BG_BOT = (20, 24, 40)
 SHAPES = [("circle", (186, 195, 255)), ("squircle", (221, 184, 255)),
           ("cookie", (83, 219, 201)), ("flower", (255, 180, 165))]
-TEXT = (242, 243, 247)
-MUTED = (154, 160, 176)
-ACCENT = (150, 170, 255)
+LABEL = (240, 230, 255)
+UI_GRADIENT = ["#FFB3EC", "#F56ED6", "#C05BFF", "#7A3FF2"]  # pink -> purple
+
+
+def rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _lerp(a, b, f):
+    return tuple(int(a[i] + (b[i] - a[i]) * f) for i in range(3))
 
 
 def shape_pts(kind, cx, cy, r, rot=0.0, n=240):
@@ -67,62 +75,104 @@ def bg():
     g = Image.new("RGB", (1, H), 0)
     for y in range(H):
         f = y / (H - 1)
-        g.putpixel((0, y), tuple(int(BG_TOP[i] + (BG_BOT[i] - BG_TOP[i]) * f) for i in range(3)))
+        g.putpixel((0, y), _lerp(BG_TOP, BG_BOT, f))
     return g.resize((W, H))
 
 
-def frame(ti, font_big, font_small):
-    img = bg().convert("RGBA")
-    layer = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
-    cx, cy = W * SS / 2, H * SS * 0.40
-    cell = H * SS * 0.11
-    r0 = H * SS * 0.085
-    idle = 0.03 * math.sin(2 * math.pi * ti / SECONDS)  # loop-continuous idle breathing
-    for (kind, col), (dx, dy), phase in zip(SHAPES, [(-1, -1), (1, -1), (-1, 1), (1, 1)], (0, .08, .16, .24)):
-        s = spring(ti - phase)
-        if s <= 0.001:
-            continue
-        scale = s * (1 + idle)
-        rot = (1 - min(1.0, s)) * 1.1 + 0.25 * math.sin(2 * math.pi * ti / SECONDS + phase * 10)
-        d.polygon(shape_pts(kind, cx + dx * cell, cy + dy * cell, r0 * scale, rot), fill=col + (255,))
-    mark = layer.resize((W, H), Image.LANCZOS)
-    img.alpha_composite(mark)
+def grad_strip(height, stops):
+    cols = [rgb(c) for c in stops]
+    seq = cols + cols[-2::-1]  # periodic (pink->purple->pink) for seamless flow
+    img = Image.new("RGB", (1, height))
+    n = len(seq) - 1
+    for y in range(height):
+        f = (y / (height - 1)) * n
+        i = min(int(f), n - 1)
+        img.putpixel((0, y), _lerp(seq[i], seq[i + 1], f - i))
+    return img
 
-    d2 = ImageDraw.Draw(img)
-    a_small = ease((ti - 0.9) / 0.5)
-    a_big = ease((ti - 1.1) / 0.5)
-    if a_small > 0:
-        t = "Welcome to"
-        bb = d2.textbbox((0, 0), t, font=font_small)
-        d2.text(((W - (bb[2] - bb[0])) / 2 - bb[0], H * 0.66), t, font=font_small,
-                fill=MUTED + (int(255 * a_small),))
-    if a_big > 0:
-        t = "Experience UI"
-        bb = d2.textbbox((0, 0), t, font=font_big)
-        d2.text(((W - (bb[2] - bb[0])) / 2 - bb[0], H * 0.72), t, font=font_big,
-                fill=TEXT + (int(255 * a_big),))
+
+def gradient_text(size, text, font, shift=0.0):
+    w, h = size[0] * SS, size[1] * SS
+    mask = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(mask)
+    bb = d.textbbox((0, 0), text, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    ox, oy = (w - tw) / 2 - bb[0], (h - th) / 2 - bb[1]
+    d.text((ox, oy), text, font=font, fill=255)
+    top = int(oy + bb[1])
+    strip = grad_strip(2 * th, UI_GRADIENT)
+    off = int(shift * th) % th
+    band = strip.crop((0, off, 1, off + th)).resize((w, th)).convert("RGBA")
+    grad = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    grad.paste(band, (0, top))
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    out.paste(grad, (0, 0), mask)
+    return out.resize(size, Image.LANCZOS)
+
+
+def frame(ti, fonts):
+    big, small = fonts
+    img = bg().convert("RGBA")
+
+    # Timeline: blobs in (0-1.5s) -> big gradient UI logo reveal/hold -> fade for loop seam.
+    blob_alpha = 1.0 - ease((ti - 1.2) / 0.5)
+    if blob_alpha > 0.001:
+        layer = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
+        d = ImageDraw.Draw(layer)
+        cx, cy = W * SS / 2, H * SS * 0.44
+        cell, r0 = H * SS * 0.11, H * SS * 0.085
+        for (kind, col), (dx, dy), phase in zip(SHAPES, [(-1, -1), (1, -1), (-1, 1), (1, 1)], (0, .08, .16, .24)):
+            s = spring(ti - phase)
+            if s <= 0.001:
+                continue
+            rot = (1 - min(1.0, s)) * 1.1
+            d.polygon(shape_pts(kind, cx + dx * cell, cy + dy * cell, r0 * s, rot),
+                      fill=col + (int(255 * blob_alpha),))
+        img.alpha_composite(layer.resize((W, H), Image.LANCZOS))
+
+    logo_in = ease((ti - 1.35) / 0.5)
+    logo_out = ease((ti - (SECONDS - 0.5)) / 0.5)   # fade at the end for a seamless loop
+    logo_alpha = logo_in * (1 - logo_out)
+    label_alpha = ease((ti - 1.7) / 0.5) * (1 - logo_out)
+    if logo_alpha > 0.001:
+        shift = (ti - 1.35) * 0.12                   # slow gradient flow
+        s = spring(ti - 1.35, damping=0.6, freq=2.2)
+        scale = 0.6 + 0.4 * min(1.25, s)
+        ui = gradient_text((W, H), "UI", big, shift)
+        if scale != 1.0:
+            nh = max(1, int(H * scale))
+            ui = ui.resize((int(W * scale), nh), Image.LANCZOS)
+        a = ui.split()[3].point(lambda v: int(v * logo_alpha))
+        ui.putalpha(a)
+        img.alpha_composite(ui, ((W - ui.width) // 2, (H - ui.height) // 2 + int(H * 0.04)))
+    if label_alpha > 0.001:
+        d = ImageDraw.Draw(img)
+        t = "E X P E R I E N C E"
+        bb = d.textbbox((0, 0), t, font=small)
+        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], H * 0.24), t, font=small,
+               fill=LABEL + (int(255 * label_alpha),))
     return img.convert("RGB")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("out")
-    ap.add_argument("font")
+    ap.add_argument("font", help="Inter-SemiBold.otf (Inter-ExtraBold.otf is used for the big UI from the same folder)")
     ap.add_argument("--preview-dir")
     a = ap.parse_args()
     if not os.path.exists(a.font):
         sys.exit(f"font not found: {a.font}")
-    font_big = ImageFont.truetype(a.font, 84)
-    font_small = ImageFont.truetype(a.font, 40)
+    big_path = os.path.join(os.path.dirname(a.font), "Inter-ExtraBold.otf")
+    big = ImageFont.truetype(big_path if os.path.exists(big_path) else a.font, 300)
+    small = ImageFont.truetype(a.font, 36)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     n = FPS * SECONDS
     with tempfile.TemporaryDirectory() as tmp:
         for i in range(n):
-            frame(i / FPS, font_big, font_small).save(os.path.join(tmp, f"f{i:04d}.png"))
-            if a.preview_dir and i in (FPS // 2, int(1.5 * FPS), n - 1):
+            frame(i / FPS, (big, small)).save(os.path.join(tmp, f"f{i:04d}.png"))
+            if a.preview_dir and i in (FPS // 2, int(1.6 * FPS), int(2.5 * FPS), n - 8):
                 os.makedirs(a.preview_dir, exist_ok=True)
-                frame(i / FPS, font_big, font_small).save(os.path.join(a.preview_dir, f"welcome_{i}.jpg"), quality=88)
+                frame(i / FPS, (big, small)).save(os.path.join(a.preview_dir, f"welcome_{i}.jpg"), quality=88)
         cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-framerate", str(FPS),
                "-i", os.path.join(tmp, "f%04d.png"),
                "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.1",

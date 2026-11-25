@@ -225,21 +225,113 @@ def boot_frame(size, font, t_intro=None, t_loop=None, t_out=None):
     return img
 
 
+
+# Pinkish-purplish gradient for the Experience UI logo reveal (top -> bottom).
+UI_GRADIENT = ["#FFB3EC", "#F56ED6", "#C05BFF", "#7A3FF2"]
+
+
+def _lerp(a, b, f):
+    return tuple(int(a[i] + (b[i] - a[i]) * f) for i in range(3))
+
+
+def grad_strip(height, stops, periodic=False):
+    """A 1-wide vertical gradient image of `height`, optionally pink->purple->pink (loops)."""
+    cols = [rgb(c) for c in stops]
+    seq = cols + cols[-2::-1] if periodic else cols
+    img = Image.new("RGB", (1, height))
+    n = len(seq) - 1
+    for y in range(height):
+        f = (y / (height - 1)) * n
+        i = min(int(f), n - 1)
+        img.putpixel((0, y), _lerp(seq[i], seq[i + 1], f - i))
+    return img
+
+
+def gradient_text(size, text, font, stops, shift=0.0):
+    """RGBA image of `text`, centred, filled with a vertical gradient (shift in [0,1) flows it)."""
+    w, h = size[0] * SS, size[1] * SS
+    mask = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(mask)
+    bb = d.textbbox((0, 0), text, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    ox, oy = (w - tw) / 2 - bb[0], (h - th) / 2 - bb[1]
+    d.text((ox, oy), text, font=font, fill=255)
+    # The gradient spans exactly the glyph height, so pink->purple runs across the letters.
+    top = int(oy + bb[1])
+    strip = grad_strip(2 * th, stops, periodic=True)
+    off = int(shift * th) % th
+    band = strip.crop((0, off, 1, off + th)).resize((w, th)).convert("RGBA")
+    grad = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    grad.paste(band, (0, top))
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    out.paste(grad, (0, 0), mask)
+    return out.resize(size, Image.LANCZOS)
+
+
+def logo_frame(size, big_font, small_font, t_reveal=None, t_loop=None, t_out=None):
+    """The big gradient 'UI' logo with EXPERIENCE above it."""
+    w = h = size
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 255))
+    scale, alpha, shift = 1.0, 1.0, 0.0
+    label_alpha = 1.0
+    if t_reveal is not None:
+        s = spring(t_reveal, damping=0.6, freq=2.2)
+        scale = 0.55 + 0.45 * min(1.3, s)
+        alpha = ease(t_reveal / 0.4)
+        label_alpha = ease((t_reveal - 0.35) / 0.4)
+    if t_loop is not None:
+        shift = t_loop                                   # flow the gradient, loop-continuous
+        scale = 1.0 + 0.02 * math.sin(2 * math.pi * t_loop)
+    if t_out is not None:
+        alpha = 1 - ease(t_out)
+        label_alpha = 1 - ease(t_out * 1.4)
+    if alpha <= 0.001:
+        return img.convert("RGB")
+
+    ui = gradient_text((w, h), "UI", big_font, UI_GRADIENT, shift)
+    if scale != 1.0:
+        nw = max(1, int(w * scale))
+        ui = ui.resize((nw, nw), Image.LANCZOS)
+    if alpha < 1.0:
+        a = ui.split()[3].point(lambda v: int(v * alpha))
+        ui.putalpha(a)
+    img.alpha_composite(ui, ((w - ui.width) // 2, (h - ui.height) // 2 + int(h * 0.02)))
+
+    if label_alpha > 0:
+        layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        d = ImageDraw.Draw(layer)
+        text = "E X P E R I E N C E"
+        bb = d.textbbox((0, 0), text, font=small_font)
+        d.text(((w - (bb[2] - bb[0])) / 2 - bb[0], h * 0.28), text, font=small_font,
+               fill=rgb("#F0E6FF") + (int(255 * label_alpha),))
+        img = Image.alpha_composite(img, layer)
+    return img.convert("RGB")
+
+
 def make_bootanimation(vendor, preview_dir, font_path):
     size, fps = 1080, 30
     font = ImageFont.truetype(font_path, 92)
+    import os as _os
+    inter_dir = _os.path.dirname(font_path)
+    big_path = _os.path.join(inter_dir, "Inter-ExtraBold.otf")
+    big_font = ImageFont.truetype(big_path if _os.path.exists(big_path) else font_path, 560)
+    small_font = ImageFont.truetype(font_path, 54)
     parts = {
-        "part0": [boot_frame(size, font, t_intro=i / fps) for i in range(int(1.6 * fps))],
-        "part1": [boot_frame(size, font, t_loop=i / (2.0 * fps)) for i in range(int(2.0 * fps))],
-        "part2": [boot_frame(size, font, t_out=i / (0.6 * fps)) for i in range(int(0.6 * fps) + 1)],
+        # Tiny blobs spring in, then give way to the big gradient UI logo, which holds (loop),
+        # then fades.
+        "part0": [boot_frame(size, font, t_intro=i / fps) for i in range(int(1.3 * fps))],
+        "part1": [logo_frame(size, big_font, small_font, t_reveal=i / (1.1 * fps)) for i in range(int(1.1 * fps) + 1)],
+        "part2": [logo_frame(size, big_font, small_font, t_loop=i / (2.4 * fps)) for i in range(int(2.4 * fps))],
+        "part3": [logo_frame(size, big_font, small_font, t_out=i / (0.6 * fps)) for i in range(int(0.6 * fps) + 1)],
     }
     out_dir = os.path.join(vendor, "bootanimation")
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "bootanimation.zip")
     desc = (f"{size} {size} {fps}\n"
-            "c 1 0 part0\n"     # intro, played once
-            "c 0 0 part1\n"     # loop until boot completes, then finish the loop
-            "c 1 0 part2\n")    # outro
+            "c 1 0 part0\n"     # tiny blobs intro, once
+            "c 1 0 part1\n"     # big gradient UI logo reveal, once
+            "c 0 0 part2\n"     # logo holds (loops) until boot completes
+            "c 1 0 part3\n")    # outro
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as z:
         info = zipfile.ZipInfo("desc.txt", date_time=(2026, 1, 1, 0, 0, 0))
         z.writestr(info, desc)
@@ -251,7 +343,7 @@ def make_bootanimation(vendor, preview_dir, font_path):
                 z.writestr(info, buf.getvalue())
     if preview_dir:
         strip = Image.new("RGB", (size // 4 * 4, size // 4), "black")
-        picks = [parts["part0"][6], parts["part0"][14], parts["part0"][-1], parts["part1"][len(parts["part1"]) // 3]]
+        picks = [parts["part0"][6], parts["part0"][-1], parts["part1"][-1], parts["part2"][0]]
         for i, f in enumerate(picks):
             strip.paste(f.resize((size // 4, size // 4), Image.LANCZOS), (i * size // 4, 0))
         strip.save(os.path.join(preview_dir, "bootanimation_frames.jpg"), quality=88)
