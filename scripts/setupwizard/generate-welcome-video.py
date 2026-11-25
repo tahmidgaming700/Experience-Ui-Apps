@@ -128,14 +128,15 @@ def frame(ti, fonts):
             px, py, rot = cx + dx * cell, cy + dy * cell, (1 - min(1.0, s)) * 1.1
             if ti >= SPIN_START:
                 sp = (ti - SPIN_START) / (SPIN_END - SPIN_START)       # 0..1 over the spin
+                # Pixel-style: orbit the centre, stay upright (no self-spin).
                 ang0 = math.atan2(dy, dx)
-                A = 2 * math.pi * 2.5 * sp
-                conv = ease((sp - 0.78) / 0.22)
+                A = 2 * math.pi * 2.0 * sp
+                conv = ease((sp - 0.80) / 0.20)
                 s = 1.0 - conv
                 rad = math.hypot(dx, dy) * (1.0 - 0.9 * conv)
                 px = cx + cell * rad * math.cos(ang0 + A)
                 py = cy + cell * rad * math.sin(ang0 + A)
-                rot = A * 1.3
+                rot = 0.0
             if s <= 0.001:
                 continue
             d.polygon(shape_pts(kind, px, py, r0 * s, rot), fill=col + (int(255 * blob_alpha),))

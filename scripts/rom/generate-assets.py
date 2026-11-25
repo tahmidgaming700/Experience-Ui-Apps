@@ -206,14 +206,15 @@ def boot_frame(size, font, t_intro=None, t_spin=None, t_loop=None, t_out=None):
         if t_spin is not None:
             # The cluster orbits the centre, then whirls inward and shrinks as it ends.
             word_alpha = 0.0
+            # Pixel-style: the blobs orbit the centre (stay upright, no self-spin).
             ang0 = math.atan2(dy, dx)
-            A = 2 * math.pi * 2.5 * t_spin
-            conv = ease((t_spin - 0.78) / 0.22)         # converge in the last fifth
+            A = 2 * math.pi * 2.0 * t_spin
+            conv = ease((t_spin - 0.80) / 0.20)         # whirl inward at the very end
             s = 1.0 - conv
             rad = math.hypot(dx, dy) * (1.0 - 0.9 * conv)
             px = cx + cell * rad * math.cos(ang0 + A)
             py = cy + cell * rad * math.sin(ang0 + A)
-            rot = A * 1.3
+            rot = 0.0
         if t_loop is not None:
             # gentle breathing and rotation, phase-shifted per shape; loop-continuous
             a = 2 * math.pi * t_loop
