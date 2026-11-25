@@ -98,14 +98,15 @@ jobs:
           tag='${{ inputs.tag }}'
           title="Experience UI 1.0 + TWRP — Galaxy Tab S 10.5 (chagalllte)"
           notes=docs/releases/experience-ui-1.0.0-chagalllte.md
-          new="$(cd assets && ls)"
+          # Is $1 one of the files we just built? (glob+basename, whitespace-safe)
+          is_new() { local f; for f in assets/*; do [ "$(basename "$f")" = "$1" ] && return 0; done; return 1; }
           upload() { for t in 1 2 3 4 5; do gh release upload "$tag" assets/* --clobber && return 0; echo "upload retry $t"; sleep $((t*15)); done; return 1; }
           if gh release view "$tag" >/dev/null 2>&1; then
             # Upload the new build first (retrying transient GitHub 5xx), THEN drop stale
             # assets, so a failed upload can never leave the release empty.
             upload || { echo "::error::asset upload failed after retries"; exit 1; }
             for a in $(gh release view "$tag" --json assets --jq '.assets[].name'); do
-              case " $new " in *" $a "*) : ;; *) gh release delete-asset "$tag" "$a" -y || true ;; esac
+              is_new "$a" || gh release delete-asset "$tag" "$a" -y || true
             done
             gh release edit "$tag" --prerelease --title "$title" --notes-file "$notes"
           else
