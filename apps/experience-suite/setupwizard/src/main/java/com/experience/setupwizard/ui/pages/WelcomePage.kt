@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -71,35 +72,27 @@ fun WelcomePage(onStart: () -> Unit) {
     val context = LocalContext.current
     val emergency = remember { emergencyDialerIntent(context) }
     val version = if (SystemInfo.isExperienceUi) SystemInfo.experienceDisplayVersion else "Android ${SystemInfo.androidVersion}"
-    val primary = MaterialTheme.colorScheme.primaryContainer
-    val tertiary = MaterialTheme.colorScheme.tertiaryContainer
-    val transition = rememberInfiniteTransition(label = "welcome")
-    val drift by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(9000), RepeatMode.Reverse), label = "drift")
 
     Box(Modifier.fillMaxSize()) {
-        // Slowly drifting tonal blobs behind the welcome text.
-        Canvas(Modifier.fillMaxSize()) {
-            drawCircle(Brush.radialGradient(listOf(primary, primary.copy(alpha = 0f)), center = Offset(size.width * (0.2f + 0.2f * drift), size.height * 0.25f), radius = size.minDimension * 0.7f), radius = size.minDimension * 0.7f, center = Offset(size.width * (0.2f + 0.2f * drift), size.height * 0.25f))
-            drawCircle(Brush.radialGradient(listOf(tertiary, tertiary.copy(alpha = 0f)), center = Offset(size.width * (0.85f - 0.2f * drift), size.height * 0.7f), radius = size.minDimension * 0.6f), radius = size.minDimension * 0.6f, center = Offset(size.width * (0.85f - 0.2f * drift), size.height * 0.7f))
-        }
         Column(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(32.dp),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text("Welcome to", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                "Experience UI",
-                style = MaterialTheme.typography.displayLarge.copy(fontSize = 56.sp, lineHeight = 60.sp, fontWeight = FontWeight.SemiBold),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.semantics { heading() },
+            // Branded welcome clip; falls back to the animated mark + title if it can't play.
+            WelcomeVideo(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 560.dp)
+                    .aspectRatio(16f / 9f),
+                fallback = { WelcomeHero(version) },
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(20.dp))
             Text(version, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(32.dp))
             Button(
                 onClick = onStart,
                 shape = ExperienceShape.pill,
@@ -117,7 +110,31 @@ fun WelcomePage(onStart: () -> Unit) {
                     Text("Emergency call")
                 }
             }
-            Spacer(Modifier.fillMaxWidth().height(24.dp))
+            Spacer(Modifier.fillMaxWidth().height(16.dp))
+        }
+    }
+}
+
+/** Fallback hero shown when the welcome video can't play: drifting tonal blobs + title. */
+@Composable
+private fun WelcomeHero(version: String) {
+    val primary = MaterialTheme.colorScheme.primaryContainer
+    val tertiary = MaterialTheme.colorScheme.tertiaryContainer
+    val transition = rememberInfiniteTransition(label = "welcome")
+    val drift by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(9000), RepeatMode.Reverse), label = "drift")
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawCircle(Brush.radialGradient(listOf(primary, primary.copy(alpha = 0f)), center = Offset(size.width * (0.2f + 0.2f * drift), size.height * 0.3f), radius = size.minDimension * 0.7f), radius = size.minDimension * 0.7f, center = Offset(size.width * (0.2f + 0.2f * drift), size.height * 0.3f))
+            drawCircle(Brush.radialGradient(listOf(tertiary, tertiary.copy(alpha = 0f)), center = Offset(size.width * (0.85f - 0.2f * drift), size.height * 0.7f), radius = size.minDimension * 0.6f), radius = size.minDimension * 0.6f, center = Offset(size.width * (0.85f - 0.2f * drift), size.height * 0.7f))
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Welcome to", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Experience UI",
+                style = MaterialTheme.typography.displaySmall.copy(fontSize = 40.sp, fontWeight = FontWeight.SemiBold),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
+            )
         }
     }
 }
