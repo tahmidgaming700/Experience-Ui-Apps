@@ -200,13 +200,16 @@ jobs:
         run: |
           set -euo pipefail
           tag='${{ inputs.tag }}'
+          title="Experience UI 1.0 (Android 11 GSI) - pre-release"
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "::error::release $tag already exists; choose another tag or delete it"
-            exit 1
+            # Regenerate in place: drop old assets, upload the new build, refresh notes.
+            for a in $(gh release view "$tag" --json assets --jq '.assets[].name'); do
+              gh release delete-asset "$tag" "$a" -y || true
+            done
+            gh release upload "$tag" assets/* --clobber
+            gh release edit "$tag" --prerelease --title "$title" --notes-file release-notes.md
+          else
+            gh release create "$tag" assets/* --prerelease --title "$title" \
+              --notes-file release-notes.md --target "$GITHUB_SHA"
           fi
-          gh release create "$tag" assets/* \
-            --prerelease \
-            --title "Experience UI 1.0 (Android 11 GSI) - pre-release" \
-            --notes-file release-notes.md \
-            --target "$GITHUB_SHA"
           echo "Published: $(gh release view "$tag" --json url --jq .url)"

@@ -96,13 +96,16 @@ jobs:
         run: |
           set -euo pipefail
           tag='${{ inputs.tag }}'
+          title="Experience UI 1.0 + TWRP — Galaxy Tab S 10.5 (chagalllte)"
+          notes=docs/releases/experience-ui-1.0.0-chagalllte.md
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "::error::release $tag already exists; choose another tag or delete it"
-            exit 1
+            for a in $(gh release view "$tag" --json assets --jq '.assets[].name'); do
+              gh release delete-asset "$tag" "$a" -y || true
+            done
+            gh release upload "$tag" assets/* --clobber
+            gh release edit "$tag" --prerelease --title "$title" --notes-file "$notes"
+          else
+            gh release create "$tag" assets/* --prerelease --title "$title" \
+              --notes-file "$notes" --target "$GITHUB_SHA"
           fi
-          gh release create "$tag" assets/* \
-            --prerelease \
-            --title "Experience UI 1.0 + TWRP — Galaxy Tab S 10.5 (chagalllte)" \
-            --notes-file docs/releases/experience-ui-1.0.0-chagalllte.md \
-            --target "$GITHUB_SHA"
           echo "Published: $(gh release view "$tag" --json url --jq .url)"
