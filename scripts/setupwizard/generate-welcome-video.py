@@ -18,7 +18,7 @@ import tempfile
 
 from PIL import Image, ImageDraw, ImageFont
 
-W, H, FPS, SECONDS = 1280, 720, 24, 6
+W, H, FPS, SECONDS = 1280, 720, 24, 8
 SS = 2
 
 BG_TOP = (14, 15, 19)
@@ -114,29 +114,41 @@ def frame(ti, fonts):
     big, small = fonts
     img = bg().convert("RGBA")
 
-    # Timeline: blobs in (0-1.5s) -> big gradient UI logo reveal/hold -> fade for loop seam.
-    blob_alpha = 1.0 - ease((ti - 1.2) / 0.5)
+    # Timeline: blobs spring in (0-1s) -> rotate for a while (1-3.4s), whirl inward ->
+    # big gradient UI logo reveal/hold -> fade at the end for a seamless loop.
+    SPIN_START, SPIN_END = 1.0, 3.4
+    blob_alpha = 1.0 if ti < SPIN_END - 0.25 else max(0.0, 1.0 - ease((ti - (SPIN_END - 0.25)) / 0.3))
     if blob_alpha > 0.001:
         layer = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
         d = ImageDraw.Draw(layer)
-        cx, cy = W * SS / 2, H * SS * 0.44
+        cx, cy = W * SS / 2, H * SS * 0.46
         cell, r0 = H * SS * 0.11, H * SS * 0.085
         for (kind, col), (dx, dy), phase in zip(SHAPES, [(-1, -1), (1, -1), (-1, 1), (1, 1)], (0, .08, .16, .24)):
             s = spring(ti - phase)
+            px, py, rot = cx + dx * cell, cy + dy * cell, (1 - min(1.0, s)) * 1.1
+            if ti >= SPIN_START:
+                sp = (ti - SPIN_START) / (SPIN_END - SPIN_START)       # 0..1 over the spin
+                ang0 = math.atan2(dy, dx)
+                A = 2 * math.pi * 2.5 * sp
+                conv = ease((sp - 0.78) / 0.22)
+                s = 1.0 - conv
+                rad = math.hypot(dx, dy) * (1.0 - 0.9 * conv)
+                px = cx + cell * rad * math.cos(ang0 + A)
+                py = cy + cell * rad * math.sin(ang0 + A)
+                rot = A * 1.3
             if s <= 0.001:
                 continue
-            rot = (1 - min(1.0, s)) * 1.1
-            d.polygon(shape_pts(kind, cx + dx * cell, cy + dy * cell, r0 * s, rot),
-                      fill=col + (int(255 * blob_alpha),))
+            d.polygon(shape_pts(kind, px, py, r0 * s, rot), fill=col + (int(255 * blob_alpha),))
         img.alpha_composite(layer.resize((W, H), Image.LANCZOS))
 
-    logo_in = ease((ti - 1.35) / 0.5)
+    reveal_at = SPIN_END - 0.1
+    logo_in = ease((ti - reveal_at) / 0.5)
     logo_out = ease((ti - (SECONDS - 0.5)) / 0.5)   # fade at the end for a seamless loop
     logo_alpha = logo_in * (1 - logo_out)
-    label_alpha = ease((ti - 1.7) / 0.5) * (1 - logo_out)
+    label_alpha = ease((ti - (reveal_at + 0.35)) / 0.5) * (1 - logo_out)
     if logo_alpha > 0.001:
-        shift = (ti - 1.35) * 0.12                   # slow gradient flow
-        s = spring(ti - 1.35, damping=0.6, freq=2.2)
+        shift = (ti - reveal_at) * 0.12                   # slow gradient flow
+        s = spring(ti - reveal_at, damping=0.6, freq=2.2)
         scale = 0.6 + 0.4 * min(1.25, s)
         ui = gradient_text((W, H), "UI", big, shift)
         if scale != 1.0:

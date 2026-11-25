@@ -187,12 +187,14 @@ MARK = [  # (kind, dx, dy, colour, phase) — the Experience mark: four tonal sh
 ]
 
 
-def boot_frame(size, font, t_intro=None, t_loop=None, t_out=None):
+def boot_frame(size, font, t_intro=None, t_spin=None, t_loop=None, t_out=None):
     w = h = size
     shapes = []
     word_alpha = 0.0
     cell, r0 = 0.13, 0.105
+    cx, cy = 0.5, 0.42
     for kind, dx, dy, colour, phase in MARK:
+        px, py = cx + dx * cell, cy + dy * cell
         if t_intro is not None:
             s = spring(t_intro - phase)
             rot = (1 - min(1.0, s)) * 1.2
@@ -201,6 +203,17 @@ def boot_frame(size, font, t_intro=None, t_loop=None, t_out=None):
             s = 1.0
             rot = 0.0
             word_alpha = 1.0
+        if t_spin is not None:
+            # The cluster orbits the centre, then whirls inward and shrinks as it ends.
+            word_alpha = 0.0
+            ang0 = math.atan2(dy, dx)
+            A = 2 * math.pi * 2.5 * t_spin
+            conv = ease((t_spin - 0.78) / 0.22)         # converge in the last fifth
+            s = 1.0 - conv
+            rad = math.hypot(dx, dy) * (1.0 - 0.9 * conv)
+            px = cx + cell * rad * math.cos(ang0 + A)
+            py = cy + cell * rad * math.sin(ang0 + A)
+            rot = A * 1.3
         if t_loop is not None:
             # gentle breathing and rotation, phase-shifted per shape; loop-continuous
             a = 2 * math.pi * t_loop
@@ -211,7 +224,7 @@ def boot_frame(size, font, t_intro=None, t_loop=None, t_out=None):
             word_alpha = 1 - ease(t_out * 1.5)
         if s <= 0.001:
             continue
-        shapes.append((kind, 0.5 + dx * cell, 0.42 + dy * cell, r0 * s, colour, rot))
+        shapes.append((kind, px, py, r0 * s, colour, rot))
     img = render((w, h), "#000000", shapes)
     if word_alpha > 0:
         layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -317,21 +330,23 @@ def make_bootanimation(vendor, preview_dir, font_path):
     big_font = ImageFont.truetype(big_path if _os.path.exists(big_path) else font_path, 560)
     small_font = ImageFont.truetype(font_path, 54)
     parts = {
-        # Tiny blobs spring in, then give way to the big gradient UI logo, which holds (loop),
-        # then fades.
-        "part0": [boot_frame(size, font, t_intro=i / fps) for i in range(int(1.3 * fps))],
-        "part1": [logo_frame(size, big_font, small_font, t_reveal=i / (1.1 * fps)) for i in range(int(1.1 * fps) + 1)],
-        "part2": [logo_frame(size, big_font, small_font, t_loop=i / (2.4 * fps)) for i in range(int(2.4 * fps))],
-        "part3": [logo_frame(size, big_font, small_font, t_out=i / (0.6 * fps)) for i in range(int(0.6 * fps) + 1)],
+        # Tiny blobs spring in, rotate for a while, whirl into the centre, then the big
+        # gradient UI logo reveals and holds (loop), then fades.
+        "part0": [boot_frame(size, font, t_intro=i / fps) for i in range(int(1.1 * fps))],
+        "part1": [boot_frame(size, font, t_spin=i / (2.6 * fps)) for i in range(int(2.6 * fps) + 1)],
+        "part2": [logo_frame(size, big_font, small_font, t_reveal=i / (1.1 * fps)) for i in range(int(1.1 * fps) + 1)],
+        "part3": [logo_frame(size, big_font, small_font, t_loop=i / (2.4 * fps)) for i in range(int(2.4 * fps))],
+        "part4": [logo_frame(size, big_font, small_font, t_out=i / (0.6 * fps)) for i in range(int(0.6 * fps) + 1)],
     }
     out_dir = os.path.join(vendor, "bootanimation")
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "bootanimation.zip")
     desc = (f"{size} {size} {fps}\n"
             "c 1 0 part0\n"     # tiny blobs intro, once
-            "c 1 0 part1\n"     # big gradient UI logo reveal, once
-            "c 0 0 part2\n"     # logo holds (loops) until boot completes
-            "c 1 0 part3\n")    # outro
+            "c 1 0 part1\n"     # blobs rotate, then whirl inward, once
+            "c 1 0 part2\n"     # big gradient UI logo reveal, once
+            "c 0 0 part3\n"     # logo holds (loops) until boot completes
+            "c 1 0 part4\n")    # outro
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as z:
         info = zipfile.ZipInfo("desc.txt", date_time=(2026, 1, 1, 0, 0, 0))
         z.writestr(info, desc)
@@ -343,7 +358,7 @@ def make_bootanimation(vendor, preview_dir, font_path):
                 z.writestr(info, buf.getvalue())
     if preview_dir:
         strip = Image.new("RGB", (size // 4 * 4, size // 4), "black")
-        picks = [parts["part0"][6], parts["part0"][-1], parts["part1"][-1], parts["part2"][0]]
+        picks = [parts["part0"][-1], parts["part1"][len(parts["part1"]) // 2], parts["part1"][-3], parts["part2"][-1]]
         for i, f in enumerate(picks):
             strip.paste(f.resize((size // 4, size // 4), Image.LANCZOS), (i * size // 4, 0))
         strip.save(os.path.join(preview_dir, "bootanimation_frames.jpg"), quality=88)
