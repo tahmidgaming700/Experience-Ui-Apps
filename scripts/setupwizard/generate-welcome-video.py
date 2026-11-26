@@ -16,7 +16,17 @@ import subprocess
 import sys
 import tempfile
 
-from PIL import Image, ImageDraw, ImageFont
+import importlib.util
+
+from PIL import Image, ImageChops, ImageDraw, ImageFont
+
+# Share the boot animation's cinematic effects (starfield, vortex, lens flare,
+# particle wave, gradient text) so the welcome clip and the boot animation never
+# drift apart. generate-assets.py lives two dirs over, under scripts/rom/.
+_GEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "rom", "generate-assets.py")
+_spec = importlib.util.spec_from_file_location("genassets", _GEN)
+G = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(G)
 
 W, H, FPS, SECONDS = 1280, 720, 24, 8
 SS = 2
@@ -111,60 +121,95 @@ def gradient_text(size, text, font, shift=0.0):
 
 
 def frame(ti, fonts):
+    """Landscape mirror of the boot animation: starfield -> the mark orbits ->
+    spiral vortex -> lens-flare reveal -> EXPERIENCE UI with a particle wave,
+    fading to black at the end for a seamless loop."""
     big, small = fonts
-    img = bg().convert("RGBA")
+    cx, cy = 0.5, 0.46
+    cell, r0 = 0.11, 0.085
+    ar = H / W                                            # keep the cluster circular in landscape
+    INTRO_END, ORB_END, VORTEX_END, REVEAL_AT = 1.0, 2.9, 3.8, 3.7
+    fade_out = ease((ti - (SECONDS - 0.5)) / 0.5)         # fade to black for a seamless loop
 
-    # Timeline: blobs spring in (0-1s) -> rotate for a while (1-3.4s), whirl inward ->
-    # big gradient UI logo reveal/hold -> fade at the end for a seamless loop.
-    SPIN_START, SPIN_END = 1.0, 3.4
-    blob_alpha = 1.0 if ti < SPIN_END - 0.25 else max(0.0, 1.0 - ease((ti - (SPIN_END - 0.25)) / 0.3))
-    if blob_alpha > 0.001:
-        layer = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
+    base = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+    G._draw_starfield(base, G.STARS, ti, dim=1.0 if ti < REVEAL_AT else 0.7)
+    out = base.convert("RGB")
+
+    # the mark springs in, orbits upright, then dissolves into the vortex
+    shapes, blob_alpha, word_alpha = [], 1.0, 0.0
+    if ti < ORB_END + 0.2:
+        if ti < INTRO_END:
+            for kind, dx, dy, colour, phase in G.MARK:
+                s = G.spring(ti - phase)
+                if s <= 0.001:
+                    continue
+                shapes.append((kind, cx + dx * cell * ar, cy + dy * cell,
+                               r0 * min(1.0, s), colour, (1 - min(1.0, s)) * 1.2))
+            word_alpha = G.ease((ti - 0.6) / 0.5)
+        else:
+            sp = min(1.0, (ti - INTRO_END) / (ORB_END - INTRO_END))
+            blob_alpha = 1.0 if ti < ORB_END else max(0.0, 1.0 - (ti - ORB_END) / 0.15)
+            if blob_alpha > 0.003:
+                for kind, dx, dy, colour, phase in G.MARK:
+                    ang = math.atan2(dy, dx) + 2 * math.pi * 2.0 * sp
+                    rad = math.hypot(dx, dy)
+                    shapes.append((kind, cx + cell * rad * math.cos(ang) * ar,
+                                   cy + cell * rad * math.sin(ang), r0, colour, 0.0))
+    if shapes:
+        blobs = G.render((W, H), "#000000", shapes)
+        if blob_alpha < 1.0:
+            blobs = Image.eval(blobs, lambda v: int(v * blob_alpha))
+        out = ImageChops.screen(out, blobs)
+
+    if ORB_END - 0.1 <= ti < VORTEX_END + 0.35:
+        vp = (ti - ORB_END) / (VORTEX_END - ORB_END)
+        out = ImageChops.screen(out, G._draw_vortex((W, H), G.VORTEX, max(0.0, min(1.0, vp)), cx, cy))
+
+    img = out.convert("RGBA")
+
+    if word_alpha > 0.001:
+        layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         d = ImageDraw.Draw(layer)
-        cx, cy = W * SS / 2, H * SS * 0.46
-        cell, r0 = H * SS * 0.11, H * SS * 0.085
-        for (kind, col), (dx, dy), phase in zip(SHAPES, [(-1, -1), (1, -1), (-1, 1), (1, 1)], (0, .08, .16, .24)):
-            s = spring(ti - phase)
-            px, py, rot = cx + dx * cell, cy + dy * cell, (1 - min(1.0, s)) * 1.1
-            if ti >= SPIN_START:
-                sp = (ti - SPIN_START) / (SPIN_END - SPIN_START)       # 0..1 over the spin
-                # Pixel-style: orbit the centre, stay upright (no self-spin).
-                ang0 = math.atan2(dy, dx)
-                A = 2 * math.pi * 2.0 * sp
-                conv = ease((sp - 0.80) / 0.20)
-                s = 1.0 - conv
-                rad = math.hypot(dx, dy) * (1.0 - 0.9 * conv)
-                px = cx + cell * rad * math.cos(ang0 + A)
-                py = cy + cell * rad * math.sin(ang0 + A)
-                rot = 0.0
-            if s <= 0.001:
-                continue
-            d.polygon(shape_pts(kind, px, py, r0 * s, rot), fill=col + (int(255 * blob_alpha),))
-        img.alpha_composite(layer.resize((W, H), Image.LANCZOS))
+        bb = d.textbbox((0, 0), "Experience", font=small)
+        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], H * 0.72), "Experience", font=small,
+               fill=G.rgb(G.INDIGO[90]) + (int(255 * min(1.0, word_alpha)),))
+        img = Image.alpha_composite(img, layer)
 
-    reveal_at = SPIN_END - 0.1
-    logo_in = ease((ti - reveal_at) / 0.5)
-    logo_out = ease((ti - (SECONDS - 0.5)) / 0.5)   # fade at the end for a seamless loop
-    logo_alpha = logo_in * (1 - logo_out)
-    label_alpha = ease((ti - (reveal_at + 0.35)) / 0.5) * (1 - logo_out)
-    if logo_alpha > 0.001:
-        shift = (ti - reveal_at) * 0.12                   # slow gradient flow
-        s = spring(ti - reveal_at, damping=0.6, freq=2.2)
-        scale = 0.6 + 0.4 * min(1.25, s)
-        ui = gradient_text((W, H), "UI", big, shift)
-        if scale != 1.0:
-            nh = max(1, int(H * scale))
-            ui = ui.resize((int(W * scale), nh), Image.LANCZOS)
-        a = ui.split()[3].point(lambda v: int(v * logo_alpha))
-        ui.putalpha(a)
-        img.alpha_composite(ui, ((W - ui.width) // 2, (H - ui.height) // 2 + int(H * 0.04)))
-    if label_alpha > 0.001:
-        d = ImageDraw.Draw(img)
-        t = "E X P E R I E N C E"
-        bb = d.textbbox((0, 0), t, font=small)
-        d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], H * 0.24), t, font=small,
-               fill=LABEL + (int(255 * label_alpha),))
-    return img.convert("RGB")
+    rt = ti - REVEAL_AT
+    if rt > -0.2:
+        fl = (math.sin(math.pi * min(1.0, rt / 0.6)) if rt < 0.6 else max(0.0, 1 - (rt - 0.6) / 0.5))
+        fl *= (1 - fade_out)
+        if fl > 0.001:
+            img = G._screen_over(img.convert("RGB"), G._draw_lensflare((W, H), 0.5, 0.5, fl)).convert("RGBA")
+        logo_in = ease(rt / 0.45)
+        logo_alpha = logo_in * (1 - fade_out)
+        if logo_alpha > 0.001:
+            s = spring(rt, damping=0.6, freq=2.2)
+            scale = 0.6 + 0.4 * min(1.25, s)
+            ui = G.gradient_text((W, H), "UI", big, UI_GRADIENT, max(0.0, rt) * 0.12)
+            if scale != 1.0:
+                ui = ui.resize((int(W * scale), max(1, int(H * scale))), Image.LANCZOS)
+            a = ui.split()[3].point(lambda v: int(v * logo_alpha))
+            ui.putalpha(a)
+            img.alpha_composite(ui, ((W - ui.width) // 2, (H - ui.height) // 2 + int(H * 0.04)))
+            label_alpha = ease((rt - 0.35) / 0.5) * (1 - fade_out)
+            if label_alpha > 0.001:
+                layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                d = ImageDraw.Draw(layer)
+                t = "E X P E R I E N C E"
+                bb = d.textbbox((0, 0), t, font=small)
+                d.text(((W - (bb[2] - bb[0])) / 2 - bb[0], H * 0.24), t, font=small,
+                       fill=LABEL + (int(255 * min(1.0, label_alpha)),))
+                img = Image.alpha_composite(img, layer)
+        wstr = ease((rt - 0.3) / 0.6) * 0.8 * (1 - fade_out)
+        if wstr > 0.001:
+            img = G._screen_over(img.convert("RGB"),
+                                 G._draw_wave((W, H), G.WAVE, max(0.0, rt), 0.62, wstr)).convert("RGBA")
+
+    res = img.convert("RGB")
+    if fade_out > 0.001:
+        res = Image.eval(res, lambda v: int(v * (1 - fade_out)))
+    return res
 
 
 def main():

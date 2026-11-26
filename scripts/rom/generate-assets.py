@@ -27,7 +27,7 @@ import wave
 import zipfile
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 # Experience Indigo tonal palette (M3 tones of seed #4355B9) and supporting hues.
 INDIGO = {10: "#00105B", 20: "#08218A", 30: "#293CA0", 40: "#4355B9", 80: "#BAC3FF", 90: "#DEE0FF", 95: "#F0EFFF"}
@@ -186,57 +186,191 @@ MARK = [  # (kind, dx, dy, colour, phase) — the Experience mark: four tonal sh
     ("flower", 1, 1, CORAL[80], 0.24),
 ]
 
+# --------------------------------------------------------------------------- #
+# Cinematic boot effects: starfield, particle vortex, lens flare, particle wave.
+# All are deterministic (seeded) and expressed in [0,1] units so they scale to
+# any resolution. They render at a small internal scale (FXS) and composite with
+# screen/add so glows stay bright without washing the palette to white.
+# --------------------------------------------------------------------------- #
+FXS = 1                 # effect-layer supersample (kept at output res; blur gives AA)
+ARM_COLS = [TEAL[80], VIOLET[80], CORAL[80], INDIGO[80]]
 
-def boot_frame(size, font, t_intro=None, t_spin=None, t_loop=None, t_out=None):
+
+def _starfield(n=190, seed=7):
+    rng = np.random.default_rng(seed)
+    return list(zip(rng.random(n), rng.random(n), rng.random(n) ** 2.2,
+                    0.6 + 1.9 * rng.random(n), rng.random(n)))
+
+
+def _draw_starfield(img, stars, t, dim=1.0):
+    w, h = img.size
+    d = ImageDraw.Draw(img, "RGBA")
+    for x, y, br, rad, tw in stars:
+        tw_b = 0.65 + 0.35 * math.sin(2 * math.pi * (t * 0.25 + tw))
+        a = int(190 * br * tw_b * dim)
+        if a <= 2:
+            continue
+        px, py, r = x * w, y * h, rad * (min(w, h) / 1080)
+        d.ellipse([px - r, py - r, px + r, py + r], fill=(220, 225, 255, a))
+
+
+def _vortex_particles(arms=4, per=30, seed=11):
+    rng = np.random.default_rng(seed)
+    parts = []
+    for ai in range(arms):
+        arm_ang = 2 * math.pi * ai / arms
+        tcol = ARM_COLS[ai % len(ARM_COLS)]
+        for j in range(per):
+            u = (j + rng.random()) / per
+            r0 = 0.03 + 0.29 * u
+            parts.append((arm_ang + rng.normal(0, 0.05), r0,
+                          1.6 + 3.0 * (1 - u), 0.26 * rng.random(), tcol))
+    return parts
+
+
+def _draw_vortex(size, parts, p, cx, cy, intensity=1.0):
+    """Spiral arms collapse into a bright core. p in [0,1]. Returns an additive RGB glow."""
+    w, h = size
+    unit = min(w, h)
+    cx0, cy0 = cx * w, cy * h
+    arms = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    da = ImageDraw.Draw(arms, "RGBA")
+    turns = 2.0
+    for ang0, r0, width, delay, tcol in parts:
+        lp = (p - delay) / (1.0 - delay)
+        if lp <= 0:
+            continue
+        lp = min(1.05, lp)
+        seg = []
+        for k in range(10):
+            llp = max(0.0, lp - 0.03 * k)
+            rr = r0 * (1.0 - llp) ** 1.05
+            aa = ang0 + 2 * math.pi * turns * llp
+            seg.append((cx0 + rr * unit * math.cos(aa), cy0 + rr * unit * math.sin(aa)))
+        a = int(235 * intensity * (0.4 + 0.6 * (1 - abs(2 * lp - 1))))
+        col = rgb(tcol) + (a,)
+        da.line(seg, fill=col, width=max(1, int(width * unit / 1080 * 1.1)), joint="curve")
+        r = 1.6 * unit / 1080
+        da.ellipse([seg[0][0] - r, seg[0][1] - r, seg[0][0] + r, seg[0][1] + r], fill=col)
+    core = ease(max(0.0, (p - 0.5) / 0.5))
+    if core > 0:
+        cr = (0.01 + 0.055 * core) * unit
+        da.ellipse([cx0 - cr, cy0 - cr, cx0 + cr, cy0 + cr],
+                   fill=(255, 244, 255, int(255 * core)))
+    rgb_arms = Image.new("RGB", (w, h), (0, 0, 0))
+    rgb_arms.paste(arms, (0, 0), arms)
+    blur = max(1, int(2.6 * unit / 1080))
+    bloom = rgb_arms.filter(ImageFilter.GaussianBlur(blur))
+    core_g = rgb_arms.filter(ImageFilter.GaussianBlur(max(1, blur // 3)))
+    return ImageChops.add(ImageChops.add(core_g, bloom), rgb_arms)
+
+
+def _draw_lensflare(size, cx, cy, strength):
+    w, h = size
+    unit = min(w, h)
+    g = Image.new("RGB", (w, h), (0, 0, 0))
+    d = ImageDraw.Draw(g)
+    cx0, cy0 = cx * w, cy * h
+    br = int(0.09 * unit)
+    d.ellipse([cx0 - br, cy0 - br, cx0 + br, cy0 + br], fill=(255, 250, 255))
+    sw, sh = int(w * 0.95), max(2, int(0.006 * unit))
+    d.ellipse([cx0 - sw / 2, cy0 - sh, cx0 + sw / 2, cy0 + sh], fill=(210, 190, 255))
+    for fx, fr, col in [(-0.28, 0.012, (120, 230, 215)), (0.33, 0.016, (255, 180, 165)),
+                        (0.12, 0.008, (200, 190, 255))]:
+        rr = fr * unit
+        d.ellipse([cx0 + fx * w - rr, cy0 - rr, cx0 + fx * w + rr, cy0 + rr], fill=col)
+    g = g.filter(ImageFilter.GaussianBlur(3 * unit / 1080))
+    return Image.eval(g, lambda v: int(v * strength)) if strength < 1.0 else g
+
+
+def _wave_particles(n=130, seed=5):
+    rng = np.random.default_rng(seed)
+    return list(zip(rng.random(n), 0.012 + 0.03 * rng.random(n), 1.5 + 3.0 * rng.random(n),
+                    rng.random(n), 1.0 + 2.2 * rng.random(n), rng.integers(0, 3, n),
+                    0.5 + 1.0 * rng.random(n)))
+
+
+_WAVE_COLS = [(120, 230, 215), (221, 184, 255), (255, 180, 165)]
+
+
+def _draw_wave(size, parts, t_loop, cy, strength=1.0):
+    w, h = size
+    unit = min(w, h)
+    g = Image.new("RGB", (w, h), (0, 0, 0))
+    d = ImageDraw.Draw(g)
+    for x0, amp, k, ph, sz, col, sp in parts:
+        x = (x0 + sp * t_loop * 0.12) % 1.0
+        y = cy + amp * math.sin(2 * math.pi * (k * x + ph + t_loop))
+        r = sz * unit / 1080
+        d.ellipse([x * w - r, y * h - r, x * w + r, y * h + r], fill=_WAVE_COLS[col])
+    g = g.filter(ImageFilter.GaussianBlur(1.3 * unit / 1080))
+    return Image.eval(g, lambda v: int(v * strength)) if strength < 1.0 else g
+
+
+def _screen_over(base_rgb, glow_rgb):
+    return ImageChops.screen(base_rgb, glow_rgb)
+
+
+# Deterministic, resolution-independent effect data (built once).
+STARS = _starfield()
+VORTEX = _vortex_particles()
+WAVE = _wave_particles()
+
+
+def boot_frame(size, font, t_intro=None, t_spin=None):
+    """part0 (t_intro): starfield + blobs spring into the 2x2 mark + 'Experience'.
+    part1 (t_spin): the blobs orbit upright, then dissolve into a spiral vortex that
+    collapses to a bright core."""
     w = h = size
-    shapes = []
-    word_alpha = 0.0
     cell, r0 = 0.13, 0.105
     cx, cy = 0.5, 0.42
-    for kind, dx, dy, colour, phase in MARK:
-        px, py = cx + dx * cell, cy + dy * cell
-        if t_intro is not None:
+    star_t = t_intro if t_intro is not None else 1.1 + (t_spin or 0.0) * 2.6
+    base = Image.new("RGBA", (w, h), (0, 0, 0, 255))
+    _draw_starfield(base, STARS, star_t)
+    out = base.convert("RGB")
+
+    shapes = []
+    word_alpha = 0.0
+    blob_alpha = 1.0
+    if t_intro is not None:
+        for kind, dx, dy, colour, phase in MARK:
             s = spring(t_intro - phase)
+            if s <= 0.001:
+                continue
             rot = (1 - min(1.0, s)) * 1.2
-            word_alpha = ease((t_intro - 0.6) / 0.5)
-        else:
-            s = 1.0
-            rot = 0.0
-            word_alpha = 1.0
-        if t_spin is not None:
-            # The cluster orbits the centre, then whirls inward and shrinks as it ends.
-            word_alpha = 0.0
-            # Pixel-style: the blobs orbit the centre (stay upright, no self-spin).
-            ang0 = math.atan2(dy, dx)
-            A = 2 * math.pi * 2.0 * t_spin
-            conv = ease((t_spin - 0.80) / 0.20)         # whirl inward at the very end
-            s = 1.0 - conv
-            rad = math.hypot(dx, dy) * (1.0 - 0.9 * conv)
-            px = cx + cell * rad * math.cos(ang0 + A)
-            py = cy + cell * rad * math.sin(ang0 + A)
-            rot = 0.0
-        if t_loop is not None:
-            # gentle breathing and rotation, phase-shifted per shape; loop-continuous
-            a = 2 * math.pi * t_loop
-            s = 1.0 + 0.06 * math.sin(a + phase * 12)
-            rot = 0.35 * math.sin(a + phase * 8)
-        if t_out is not None:
-            s *= 1 - ease(t_out)
-            word_alpha = 1 - ease(t_out * 1.5)
-        if s <= 0.001:
-            continue
-        shapes.append((kind, px, py, r0 * s, colour, rot))
-    img = render((w, h), "#000000", shapes)
+            shapes.append((kind, cx + dx * cell, cy + dy * cell, r0 * min(1.0, s), colour, rot))
+        word_alpha = ease((t_intro - 0.6) / 0.5)
+    elif t_spin is not None:
+        ORB = 0.55                                        # orbit, then dissolve into the vortex
+        sp = min(1.0, t_spin / ORB)
+        blob_alpha = 1.0 if t_spin < ORB else max(0.0, 1.0 - (t_spin - ORB) / 0.12)
+        if blob_alpha > 0.003:
+            for kind, dx, dy, colour, phase in MARK:
+                ang0 = math.atan2(dy, dx)
+                ang = ang0 + 2 * math.pi * 2.0 * sp       # Pixel-style: orbit upright, no self-spin
+                rad = math.hypot(dx, dy)
+                shapes.append((kind, cx + cell * rad * math.cos(ang),
+                               cy + cell * rad * math.sin(ang), r0, colour, 0.0))
+
+    if shapes:
+        blobs = render((w, h), "#000000", shapes)         # light tonal blobs; screen keeps them bright
+        if blob_alpha < 1.0:
+            blobs = Image.eval(blobs, lambda v: int(v * blob_alpha))
+        out = ImageChops.screen(out, blobs)
+
+    if t_spin is not None:
+        vp = (t_spin - 0.55) / 0.45
+        if vp > -0.12:
+            out = _screen_over(out, _draw_vortex((w, h), VORTEX, max(0.0, min(1.0, vp)), cx, cy))
+
     if word_alpha > 0:
-        layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         d = ImageDraw.Draw(layer)
-        text = "Experience"
-        bbox = d.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        d.text(((w - tw) / 2 - bbox[0], h * 0.74), text, font=font,
+        bbox = d.textbbox((0, 0), "Experience", font=font)
+        d.text(((w - (bbox[2] - bbox[0])) / 2 - bbox[0], h * 0.74), "Experience", font=font,
                fill=rgb(INDIGO[90]) + (int(255 * word_alpha),))
-        img = Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
-    return img
+        out = Image.alpha_composite(out.convert("RGBA"), layer).convert("RGB")
+    return out
 
 
 
@@ -283,11 +417,22 @@ def gradient_text(size, text, font, stops, shift=0.0):
 
 
 def logo_frame(size, big_font, small_font, t_reveal=None, t_loop=None, t_out=None):
-    """The big gradient 'UI' logo with EXPERIENCE above it."""
+    """The big gradient 'UI' logo with EXPERIENCE above it, over a dim starfield,
+    with a lens-flare burst on reveal and a particle wave drifting beneath."""
     w = h = size
-    img = Image.new("RGBA", (w, h), (0, 0, 0, 255))
-    scale, alpha, shift = 1.0, 1.0, 0.0
-    label_alpha = 1.0
+    star_t = (t_reveal or 0.0) if t_reveal is not None else 1.0 + (t_loop or 0.0)
+    base = Image.new("RGBA", (w, h), (0, 0, 0, 255))
+    _draw_starfield(base, STARS, star_t, dim=0.7)
+    out = base.convert("RGB")
+
+    if t_reveal is not None:                              # lens-flare bursts, then fades
+        fl = math.sin(math.pi * min(1.0, t_reveal / 0.6)) if t_reveal < 0.6 \
+            else max(0.0, 1 - (t_reveal - 0.6) / 0.5)
+        if fl > 0:
+            out = _screen_over(out, _draw_lensflare((w, h), 0.5, 0.5, fl))
+    img = out.convert("RGBA")
+
+    scale, alpha, shift, label_alpha = 1.0, 1.0, 0.0, 1.0
     if t_reveal is not None:
         s = spring(t_reveal, damping=0.6, freq=2.2)
         scale = 0.55 + 0.45 * min(1.3, s)
@@ -299,26 +444,30 @@ def logo_frame(size, big_font, small_font, t_reveal=None, t_loop=None, t_out=Non
     if t_out is not None:
         alpha = 1 - ease(t_out)
         label_alpha = 1 - ease(t_out * 1.4)
-    if alpha <= 0.001:
-        return img.convert("RGB")
 
-    ui = gradient_text((w, h), "UI", big_font, UI_GRADIENT, shift)
-    if scale != 1.0:
-        nw = max(1, int(w * scale))
-        ui = ui.resize((nw, nw), Image.LANCZOS)
-    if alpha < 1.0:
-        a = ui.split()[3].point(lambda v: int(v * alpha))
-        ui.putalpha(a)
-    img.alpha_composite(ui, ((w - ui.width) // 2, (h - ui.height) // 2 + int(h * 0.02)))
+    if alpha > 0.001:
+        ui = gradient_text((w, h), "UI", big_font, UI_GRADIENT, shift)
+        if scale != 1.0:
+            nw = max(1, int(w * scale))
+            ui = ui.resize((nw, nw), Image.LANCZOS)
+        if alpha < 1.0:
+            a = ui.split()[3].point(lambda v: int(v * alpha))
+            ui.putalpha(a)
+        img.alpha_composite(ui, ((w - ui.width) // 2, (h - ui.height) // 2 + int(h * 0.02)))
+        if label_alpha > 0:
+            layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            d = ImageDraw.Draw(layer)
+            text = "E X P E R I E N C E"
+            bb = d.textbbox((0, 0), text, font=small_font)
+            d.text(((w - (bb[2] - bb[0])) / 2 - bb[0], h * 0.28), text, font=small_font,
+                   fill=rgb("#F0E6FF") + (int(255 * min(1.0, label_alpha)),))
+            img = Image.alpha_composite(img, layer)
 
-    if label_alpha > 0:
-        layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        d = ImageDraw.Draw(layer)
-        text = "E X P E R I E N C E"
-        bb = d.textbbox((0, 0), text, font=small_font)
-        d.text(((w - (bb[2] - bb[0])) / 2 - bb[0], h * 0.28), text, font=small_font,
-               fill=rgb("#F0E6FF") + (int(255 * label_alpha),))
-        img = Image.alpha_composite(img, layer)
+    wstr = (ease((t_reveal - 0.5) / 0.5) * 0.8 if t_reveal is not None else
+            0.8 if t_loop is not None else (1 - ease(t_out)) * 0.8)
+    if wstr > 0.001:
+        img = _screen_over(img.convert("RGB"),
+                           _draw_wave((w, h), WAVE, t_loop or 0.0, 0.62, wstr)).convert("RGBA")
     return img.convert("RGB")
 
 
@@ -354,7 +503,7 @@ def make_bootanimation(vendor, preview_dir, font_path):
         for part, frames in parts.items():
             for i, frame in enumerate(frames):
                 buf = io.BytesIO()
-                frame.quantize(colors=128, method=Image.MEDIANCUT, dither=Image.NONE).save(buf, "PNG", optimize=True)
+                frame.quantize(colors=256, method=Image.MEDIANCUT, dither=Image.NONE).save(buf, "PNG", optimize=True)
                 info = zipfile.ZipInfo(f"{part}/{i:05d}.png", date_time=(2026, 1, 1, 0, 0, 0))
                 z.writestr(info, buf.getvalue())
     if preview_dir:
