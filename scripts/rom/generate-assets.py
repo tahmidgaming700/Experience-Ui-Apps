@@ -471,32 +471,194 @@ def logo_frame(size, big_font, small_font, t_reveal=None, t_loop=None, t_out=Non
     return img.convert("RGB")
 
 
+# ---------------------------------------------------------------------------
+# Boot animation — Android-TV-structured reveal (landscape).
+#   part0  "powered by Experience UI" wordmark, held a while
+#   part1  the wordmark dissolves and the four Experience blobs fly out
+#   part2  the blobs drift across a wide horizontal band (seamless loading loop)
+#   part3  the blobs gather; top & bottom pairs merge into a horizontal pink->
+#          purple gradient bar, which reveals the "Experience UI" logo
+#   part4  the logo settles and holds
+# The wordmark/logo use Poppins (an OFL geometric face close to the Android TV
+# wordmark's Product Sans); see scripts/rom/fonts/.
+# ---------------------------------------------------------------------------
+BT_SS = 2
+BT_CELL, BT_R0 = 0.085, 0.072        # 2x2 half-spacing / blob radius (unit = H)
+_BT_BLOBS = [("circle", rgb(INDIGO[80]), (-1, -1)),
+             ("squircle", rgb(VIOLET[80]), (1, -1)),
+             ("cookie", rgb(TEAL[80]), (-1, 1)),
+             ("flower", rgb(CORAL[80]), (1, 1))]
+_BT_LOOP = [  # home-x offset (frac of W), Ax, Ay, fx, fy, phase-x, phase-y
+    (-0.26, 0.05, 0.12, 1, 2, 0.00, 0.10),
+    (-0.09, 0.06, 0.14, 2, 1, 0.30, 0.55),
+    (0.09, 0.06, 0.13, 1, 2, 0.60, 0.25),
+    (0.26, 0.05, 0.11, 2, 1, 0.85, 0.70),
+]
+
+
+def _bt_loop_pos(i, lp):
+    hx, ax, ay, fx, fy, phx, phy = _BT_LOOP[i]
+    px = 0.5 + hx + ax * math.sin(2 * math.pi * (fx * lp + phx))
+    py = 0.5 + ay * math.sin(2 * math.pi * (fy * lp + phy))
+    r = BT_R0 * (1.0 + 0.06 * math.sin(2 * math.pi * (lp + i / 4.0)))
+    return px, py, r
+
+
+def _bt_hgrad(w, h, stops):
+    cols = [rgb(c) for c in stops]
+    img = Image.new("RGB", (w, 1))
+    n = len(cols) - 1
+    for x in range(w):
+        f = (x / (w - 1)) * n
+        i = min(int(f), n - 1)
+        img.putpixel((x, 0), _lerp(cols[i], cols[i + 1], f - i))
+    return img.resize((w, h))
+
+
+def _bt_grad_text(size, text, font, stops):
+    """RGBA of `text`, centred, filled with a horizontal pink->purple gradient."""
+    w, h = size[0] * BT_SS, size[1] * BT_SS
+    mask = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(mask)
+    bb = d.textbbox((0, 0), text, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    d.text(((w - tw) / 2 - bb[0], (h - th) / 2 - bb[1]), text, font=font, fill=255)
+    grad = _bt_hgrad(w, h, stops).convert("RGBA")
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    out.paste(grad, (0, 0), mask)
+    return out.resize(size, Image.LANCZOS), (tw / BT_SS, th / BT_SS)
+
+
+def _bt_draw_blobs(size, placements):
+    w, h = size
+    layer = Image.new("RGBA", (w * BT_SS, h * BT_SS), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    unit = h * BT_SS
+    for kind, (px, py), r, colour, alpha in placements:
+        if r <= 0 or alpha <= 0.003:
+            continue
+        d.polygon(shape_points(kind, px * w * BT_SS, py * h * BT_SS, r * unit),
+                  fill=tuple(colour) + (int(255 * min(1.0, max(0.0, alpha))),))
+    return layer.resize((w, h), Image.LANCZOS)
+
+
+def _bt_wordmark(size, fonts, alpha):
+    w, h = size
+    reg, med, _ = fonts
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    a = int(255 * min(1.0, max(0.0, alpha)))
+    bb1 = d.textbbox((0, 0), "powered by", font=reg)
+    d.text(((w - (bb1[2] - bb1[0])) / 2 - bb1[0], h * 0.40), "powered by", font=reg, fill=(170, 176, 200, a))
+    bb2 = d.textbbox((0, 0), "Experience UI", font=med)
+    d.text(((w - (bb2[2] - bb2[0])) / 2 - bb2[0], h * 0.47), "Experience UI", font=med, fill=(245, 245, 250, a))
+    return img
+
+
+def _bt_part0(size, fonts, a):
+    base = Image.new("RGBA", size, (0, 0, 0, 255))
+    base.alpha_composite(_bt_wordmark(size, fonts, ease(a)))
+    return base.convert("RGB")
+
+
+def _bt_part1(size, fonts, p):
+    base = Image.new("RGBA", size, (0, 0, 0, 255))
+    wa = 1 - ease(min(1.0, p / 0.5))
+    if wa > 0.003:
+        base.alpha_composite(_bt_wordmark(size, fonts, wa))
+    sp = spring(p)
+    placements = []
+    for i, (kind, col, _) in enumerate(_BT_BLOBS):
+        hx, hy, _r = _bt_loop_pos(i, 0.0)
+        placements.append((kind, (0.5 + (hx - 0.5) * ease(p), 0.5 + (hy - 0.5) * ease(p)),
+                           BT_R0 * (0.15 + 0.85 * sp), col, ease(min(1.0, p / 0.4))))
+    base.alpha_composite(_bt_draw_blobs(size, placements))
+    return base.convert("RGB")
+
+
+def _bt_part2(size, fonts, lp):
+    base = Image.new("RGBA", size, (0, 0, 0, 255))
+    placements = []
+    for i, (kind, col, _) in enumerate(_BT_BLOBS):
+        px, py, r = _bt_loop_pos(i, lp)
+        placements.append((kind, (px, py), r, col, 1.0))
+    base.alpha_composite(_bt_draw_blobs(size, placements))
+    return base.convert("RGB")
+
+
+def _bt_part3(size, fonts, p):
+    w, h = size
+    base = Image.new("RGBA", size, (0, 0, 0, 255))
+    logo, (lw, lh) = _bt_grad_text(size, "Experience UI", fonts[2], UI_GRADIENT)
+    pill_hw = lw / 2 + 0.03 * w
+    pill_hh = BT_R0 * h * 0.82
+    gather = ease(min(1.0, p / 0.32))
+    collapse = ease(max(0.0, (p - 0.30) / 0.34))
+    reveal = ease(max(0.0, (p - 0.62) / 0.38))
+    if collapse < 0.999:
+        placements = []
+        for i, (kind, col, (dx, dy)) in enumerate(_BT_BLOBS):
+            hx, hy, _r = _bt_loop_pos(i, 0.0)
+            gx, gy = 0.5 + dx * BT_CELL * (h / w), 0.5 + dy * BT_CELL
+            px, py = hx + (gx - hx) * gather, hy + (gy - hy) * gather
+            px += (0.5 + dx * (pill_hw / w) * 0.72 - px) * collapse
+            py += (0.5 - py) * collapse
+            placements.append((kind, (px, py), BT_R0 * (1 - 0.1 * collapse),
+                               _lerp(col, rgb("#E866D0"), collapse), 1 - collapse))
+        base.alpha_composite(_bt_draw_blobs(size, placements))
+    if collapse > 0.01:
+        pw = max(2, int(pill_hh * 1.6 + (pill_hw - pill_hh * 1.6) * collapse))
+        strip = _bt_hgrad(pw * 2, int(pill_hh * 2), UI_GRADIENT).convert("RGBA")
+        m = Image.new("L", strip.size, 0)
+        ImageDraw.Draw(m).rounded_rectangle([0, 0, strip.size[0] - 1, strip.size[1] - 1],
+                                            radius=int(pill_hh), fill=int(255 * collapse * (1 - reveal)))
+        strip.putalpha(m)
+        pill = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        pill.alpha_composite(strip, (int(w / 2 - pw), int(h / 2 - pill_hh)))
+        base.alpha_composite(pill.filter(ImageFilter.GaussianBlur(1)))
+    if reveal > 0.01:
+        lg = logo.copy()
+        lg.putalpha(logo.split()[3].point(lambda v: int(v * reveal)))
+        base.alpha_composite(lg)
+    return base.convert("RGB")
+
+
+def _bt_part4(size, fonts):
+    base = Image.new("RGBA", size, (0, 0, 0, 255))
+    logo, _ = _bt_grad_text(size, "Experience UI", fonts[2], UI_GRADIENT)
+    base.alpha_composite(logo)
+    return base.convert("RGB")
+
+
 def make_bootanimation(vendor, preview_dir, font_path):
-    size, fps = 1080, 30
-    font = ImageFont.truetype(font_path, 92)
-    import os as _os
-    inter_dir = _os.path.dirname(font_path)
-    big_path = _os.path.join(inter_dir, "Inter-ExtraBold.otf")
-    big_font = ImageFont.truetype(big_path if _os.path.exists(big_path) else font_path, 560)
-    small_font = ImageFont.truetype(font_path, 54)
+    W, H, fps = 1280, 720, 30
+    fdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+
+    def _pop(name, px):
+        p = os.path.join(fdir, name)
+        return ImageFont.truetype(p if os.path.exists(p) else font_path, px)
+    fonts = (_pop("Poppins-Regular.ttf", int(0.030 * H)),
+             _pop("Poppins-Medium.ttf", int(0.065 * H)),
+             _pop("Poppins-SemiBold.ttf", int(0.11 * H)))
+    size = (W, H)
+    n0, hold0 = int(0.5 * fps), 60       # wordmark fade-in frames; desc pause holds it
+    n1, n2, n3, n4 = int(1.0 * fps), int(3.0 * fps), int(2.1 * fps), int(0.9 * fps)
     parts = {
-        # Tiny blobs spring in, rotate for a while, whirl into the centre, then the big
-        # gradient UI logo reveals and holds (loop), then fades.
-        "part0": [boot_frame(size, font, t_intro=i / fps) for i in range(int(1.1 * fps))],
-        "part1": [boot_frame(size, font, t_spin=i / (2.6 * fps)) for i in range(int(2.6 * fps) + 1)],
-        "part2": [logo_frame(size, big_font, small_font, t_reveal=i / (1.1 * fps)) for i in range(int(1.1 * fps) + 1)],
-        "part3": [logo_frame(size, big_font, small_font, t_loop=i / (2.4 * fps)) for i in range(int(2.4 * fps))],
-        "part4": [logo_frame(size, big_font, small_font, t_out=i / (0.6 * fps)) for i in range(int(0.6 * fps) + 1)],
+        "part0": [_bt_part0(size, fonts, i / (n0 - 1)) for i in range(n0)],
+        "part1": [_bt_part1(size, fonts, i / n1) for i in range(n1)],
+        "part2": [_bt_part2(size, fonts, i / n2) for i in range(n2)],
+        "part3": [_bt_part3(size, fonts, i / n3) for i in range(n3)],
+        "part4": [_bt_part4(size, fonts) for _ in range(n4)],
     }
     out_dir = os.path.join(vendor, "bootanimation")
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "bootanimation.zip")
-    desc = (f"{size} {size} {fps}\n"
-            "c 1 0 part0\n"     # tiny blobs intro, once
-            "c 1 0 part1\n"     # blobs rotate, then whirl inward, once
-            "c 1 0 part2\n"     # big gradient UI logo reveal, once
-            "c 0 0 part3\n"     # logo holds (loops) until boot completes
-            "c 1 0 part4\n")    # outro
+    desc = (f"{W} {H} {fps}\n"
+            f"c 1 {hold0} part0\n"   # 'powered by Experience UI', held a while
+            "c 1 0 part1\n"          # breaks into the four blobs
+            "c 0 0 part2\n"          # blobs float (loops until boot completes)
+            "c 1 0 part3\n"          # pairs merge into the pink gradient, logo reveals
+            "c 1 0 part4\n")         # logo settles and holds
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as z:
         info = zipfile.ZipInfo("desc.txt", date_time=(2026, 1, 1, 0, 0, 0))
         z.writestr(info, desc)
@@ -507,10 +669,12 @@ def make_bootanimation(vendor, preview_dir, font_path):
                 info = zipfile.ZipInfo(f"{part}/{i:05d}.png", date_time=(2026, 1, 1, 0, 0, 0))
                 z.writestr(info, buf.getvalue())
     if preview_dir:
-        strip = Image.new("RGB", (size // 4 * 4, size // 4), "black")
-        picks = [parts["part0"][-1], parts["part1"][len(parts["part1"]) // 2], parts["part1"][-3], parts["part2"][-1]]
+        picks = [parts["part0"][-1], parts["part2"][len(parts["part2"]) // 3],
+                 parts["part3"][int(len(parts["part3"]) * 0.78)], parts["part4"][0]]
+        tw, th = W // 4, H // 4
+        strip = Image.new("RGB", (tw * 4, th), "black")
         for i, f in enumerate(picks):
-            strip.paste(f.resize((size // 4, size // 4), Image.LANCZOS), (i * size // 4, 0))
+            strip.paste(f.resize((tw, th), Image.LANCZOS), (i * tw, 0))
         strip.save(os.path.join(preview_dir, "bootanimation_frames.jpg"), quality=88)
     n = sum(len(f) for f in parts.values())
     print(f"bootanimation: {n} frames, {os.path.getsize(path) // 1024} KiB -> {path}")
